@@ -1,23 +1,49 @@
 import os
+import json
 from typing import Dict, Any
 import pandas as pd
 
 
 class ExperimentLogger:
+    """
+    Handles experiment logging, creating dedicated run directories, saving metrics CSV,
+    and recording hyperparameters to config.yaml.
+    """
+
     def __init__(self, output_dir: str, experiment_name: str):
         self.output_dir = os.path.abspath(output_dir)
         self.experiment_name = experiment_name
         self.data = []
         os.makedirs(self.output_dir, exist_ok=True)
 
-    def log(self, data_point: Dict[str, Any]):
+    def log(self, data_point: Dict[str, Any]) -> None:
+        """
+        Logs a single training metric step dictionary.
+        """
         self.data.append(data_point)
 
+    def save_config(self, config_dict: Dict[str, Any]) -> str:
+        """
+        Saves experiment hyperparameters to config.yaml in the run directory.
+        """
+        filepath = os.path.join(self.output_dir, "config.yaml")
+        try:
+            import yaml
+            with open(filepath, "w") as f:
+                yaml.dump(config_dict, f, default_flow_style=False, sort_keys=False)
+        except ImportError:
+            with open(filepath, "w") as f:
+                json.dump(config_dict, f, indent=4)
+        print(f"Hyperparameters saved to {filepath}")
+        return filepath
+
     def save(self) -> str:
-        filepath = os.path.abspath(os.path.join(self.output_dir, f"{self.experiment_name}_results.csv"))
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        """
+        Saves logged metrics to CSV file in the run directory.
+        """
+        filepath = os.path.join(self.output_dir, f"{self.experiment_name}_results.csv")
         df = pd.DataFrame(self.data)
-        df.attrs['mode'] = self.experiment_name
+        df.attrs["mode"] = self.experiment_name
         df.to_csv(filepath, index=False)
         print(f"Results saved to {filepath}")
         return filepath

@@ -166,6 +166,7 @@ def run_baseline_experiment(
     rollout_steps: int = 2048,
     seed: int = 0,
     num_contexts: int = 100,
+    exp_tag: str = "",
     output_dir: str = "scripts/results",
 ) -> str:
     """
@@ -178,11 +179,14 @@ def run_baseline_experiment(
         rollout_steps: Number of interaction steps per PPO update buffer.
         seed: Random seed for reproducibility.
         num_contexts: Number of varying context instances to sample (default: 100).
+        exp_tag: Optional custom experiment tag for run directory naming.
         output_dir: Directory where results CSV files will be saved.
 
     Returns:
         str: Absolute or relative file path to the saved CSV results file.
     """
+    from datetime import datetime
+
     output_dir = resolve_path(output_dir)
 
     # Set seed for reproducibility
@@ -202,10 +206,35 @@ def run_baseline_experiment(
     else:
         action_dim = env.action_space.n
 
-    # Instantiate PPO Agent and Experiment Logger
+    # Instantiate PPO Agent
     agent = BasePPOAgent(input_dim=input_dim, action_dim=action_dim, is_continuous=is_continuous)
     exp_name = f"{mode}_seed{seed}"
-    logger = ExperimentLogger(output_dir=output_dir, experiment_name=exp_name)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    tag_str = f"_{exp_tag}" if exp_tag else ""
+    folder_name = f"{timestamp}_{env_name.lower().replace('-', '_')}_{mode}_seed{seed}{tag_str}"
+    run_dir = os.path.join(output_dir, folder_name)
+    logger = ExperimentLogger(output_dir=run_dir, experiment_name=exp_name)
+
+    # Record and save experiment hyperparameters to config.yaml
+    hyperparams = {
+        "env_name": env_name,
+        "mode": mode,
+        "seed": seed,
+        "total_steps": total_steps,
+        "rollout_steps": rollout_steps,
+        "num_contexts": num_contexts,
+        "is_continuous": is_continuous,
+        "input_dim": input_dim,
+        "action_dim": action_dim,
+        "gamma": agent.gamma,
+        "gae_lambda": agent.gae_lambda,
+        "clip_eps": agent.clip_eps,
+        "epochs": agent.epochs,
+        "batch_size": agent.batch_size,
+        "ent_coef": agent.ent_coef,
+        "vf_coef": agent.vf_coef,
+    }
+    logger.save_config(hyperparams)
 
     global_step = 0
     ep_return = 0.0
@@ -321,6 +350,12 @@ def main():
         default=None,
         help="Optional custom filename for the generated plot image (e.g. 'custom_curve.png').",
     )
+    parser.add_argument(
+        "--exp_tag",
+        type=str,
+        default="",
+        help="Optional custom tag for run directory naming (e.g. 'lr1e-3' or 'baseline_v1').",
+    )
 
     args = parser.parse_args()
 
@@ -341,6 +376,7 @@ def main():
                 rollout_steps=args.rollout_steps,
                 seed=seed,
                 num_contexts=args.num_contexts,
+                exp_tag=args.exp_tag,
                 output_dir=output_dir,
             )
             generated_filepaths.append(filepath)
