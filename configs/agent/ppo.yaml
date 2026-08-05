@@ -1,0 +1,41 @@
+# configs/agent/ppo.yaml
+# Hydra configuration for ContextPPOAgent training
+
+env:
+  # Gymnasium / CARL environment name
+  name: CartPole-v1
+
+# Global random seed
+seed: 0
+
+agent:
+  # Standardized learning rate for stability
+  lr_actor: 3e-4     # actor step-size
+  lr_critic: 3e-4    # critic step-size
+
+  # Discount and GAE
+  gamma: 0.99
+  gae_lambda: 0.95
+
+  # PPO update settings
+  clip_eps: 0.2      # clipping epsilon for surrogate objective
+  epochs: 10         # epochs per fixed rollout batch update
+  batch_size: 64     # mini-batch size
+
+  # Regularization coefficients
+  ent_coef: 0.01     # entropy bonus weight
+  vf_coef: 0.5       # value-loss weight
+
+  # Network size
+  hidden_size: 128
+
+train:
+  # Fixed rollout buffer size per update
+  rollout_steps: 2048
+
+  # Total environment steps
+  total_steps: 50000
+
+  # Evaluation settings
+  eval_interval: 5000   # evaluate every N steps
+  eval_episodes: 5      # episodes per evaluation
