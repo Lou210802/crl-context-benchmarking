@@ -58,16 +58,18 @@ class HistoryBuffer:
         if len(self.history) > self.max_history_len:
             self.history.pop(0)
 
-    def get_tensor(self) -> torch.Tensor:
+    def get_tensor(self, pad_to_max: bool = False) -> torch.Tensor:
         """
         Returns history transition sequence as a PyTorch tensor of shape (1, seq_len, feat_dim).
-        If history is empty, returns a zero tensor of shape (1, 1, feat_dim).
+        If pad_to_max is True, left-pads shorter histories with zeros to (1, max_history_len, feat_dim).
 
         Returns:
             torch.Tensor: PyTorch tensor of shape (1, sequence_length, feature_dimension).
         """
         feat_dim = self.state_dim + self.action_dim + 1
         if len(self.history) == 0:
+            if pad_to_max:
+                return torch.zeros((1, self.max_history_len, feat_dim), dtype=torch.float32)
             return torch.zeros((1, 1, feat_dim), dtype=torch.float32)
 
         seq_feats = []
@@ -76,4 +78,10 @@ class HistoryBuffer:
             seq_feats.append(feat)
 
         tensor = torch.tensor(np.array(seq_feats), dtype=torch.float32).unsqueeze(0)
+
+        if pad_to_max and tensor.shape[1] < self.max_history_len:
+            pad_len = self.max_history_len - tensor.shape[1]
+            zero_pad = torch.zeros((1, pad_len, feat_dim), dtype=torch.float32)
+            tensor = torch.cat([zero_pad, tensor], dim=1)
+
         return tensor

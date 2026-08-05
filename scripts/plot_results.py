@@ -21,12 +21,12 @@ import tty
 from typing import List, Dict, Any, Optional
 import pandas as pd
 
-from utils.env_utils import resolve_path
-
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+from src.utils.env_utils import resolve_path
 from src.utils.plotting import Plotter
 
 
@@ -235,8 +235,8 @@ def main():
     parser.add_argument(
         "--dir",
         type=str,
-        default="scripts/results",
-        help="Directory to search for result CSV files (default: 'scripts/results').",
+        default="results",
+        help="Directory to search for result CSV files (default: 'results').",
     )
     parser.add_argument(
         "--title",

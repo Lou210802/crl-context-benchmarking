@@ -1,11 +1,12 @@
 """
-Base Proximal Policy Optimization (PPO) Agent Implementation.
+Base Proximal Policy Optimization (PPO) Agent Implementation with GPU Support.
 
 This module contains the BasePPOAgent class implementing clipped surrogate PPO updates
-and Generalized Advantage Estimation (GAE) for both discrete and continuous action space environments.
+and Generalized Advantage Estimation (GAE) for both discrete and continuous action space environments,
+fully accelerated on CUDA GPU devices when available.
 """
 
-from typing import Any, List, Tuple, Union
+from typing import Any, List, Tuple, Union, Optional
 import numpy as np
 import torch
 import torch.nn as nn
@@ -20,7 +21,7 @@ class BasePPOAgent:
     """
     PPO Agent using separate policy (actor) and value (critic) network architectures,
     clipped surrogate objectives, entropy regularization, and Generalized Advantage Estimation (GAE).
-    Supports both discrete (Categorical) and continuous (Gaussian) action spaces.
+    Supports both discrete (Categorical) and continuous (Gaussian) action spaces on GPU/CPU devices.
     """
 
     def __init__(
@@ -38,11 +39,12 @@ class BasePPOAgent:
         ent_coef: float = 0.01,
         vf_coef: float = 0.5,
         hidden_size: int = 128,
+        device: Optional[torch.device] = None,
     ) -> None:
         """
-        Initializes hyperparameters, neural network models, and joint Adam optimizer.
+        Initializes hyperparameters, neural network models on target GPU/CPU device, and Adam optimizer.
         """
-        # Store PPO hyperparameters
+        self.device = device if device is not None else torch.device("cpu")
         self.gamma = gamma
         self.gae_lambda = gae_lambda
         self.clip_eps = clip_eps
@@ -54,12 +56,12 @@ class BasePPOAgent:
 
         # Instantiate policy network (actor) and value network (critic)
         if self.is_continuous:
-            self.policy = ContinuousPolicy(input_dim, action_dim, hidden_size)
+            self.policy = ContinuousPolicy(input_dim, action_dim, hidden_size).to(self.device)
         else:
-            self.policy = Policy(input_dim, action_dim, hidden_size)
-        self.value_fn = ValueNetwork(input_dim, hidden_size)
+            self.policy = Policy(input_dim, action_dim, hidden_size).to(self.device)
+        self.value_fn = ValueNetwork(input_dim, hidden_size).to(self.device)
 
-        # Set up Adam optimizer for both networks with parameter groups
+        # Set up Adam optimizer for both networks
         self.optimizer = optim.Adam(
             [
                 {"params": self.policy.parameters(), "lr": lr_actor},
@@ -85,10 +87,8 @@ class BasePPOAgent:
         """
         Computes action prediction, log probability, entropy, and state value estimate for a single observation.
         """
-        # Convert state numpy array to PyTorch tensor
-        t = torch.from_numpy(state).float()
+        t = torch.from_numpy(state).float().to(self.device)
 
-        # Evaluate policy distribution and state value estimate without gradient tracking
         with torch.no_grad():
             dist = self.get_dist(t)
             val = self.value_fn(t)
@@ -119,23 +119,17 @@ class BasePPOAgent:
         dones: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Computes Generalized Advantage Estimation (GAE) and target returns backwards through time.
-
-        Bootstraps state values for truncated transitions (time limit reached) while masking out
-        truly terminal states (`terms`).
+        Computes Generalized Advantage Estimation (GAE) and target returns backwards through time on device.
         """
-        # Compute temporal difference (TD) errors: mask next_values only on true termination (terms)
-        rewards_t = torch.tensor(rewards, dtype=torch.float32)
+        rewards_t = torch.tensor(rewards, dtype=torch.float32, device=self.device)
         deltas = rewards_t + self.gamma * next_values * (1 - terms) - values
 
-        # Recursively accumulate GAE advantages in reverse order: reset advantage accumulation at episode boundaries (dones)
         advantages = torch.zeros_like(deltas)
         gae = 0.0
         for i in reversed(range(deltas.shape[0])):
             gae = deltas[i] + self.gamma * self.gae_lambda * gae * (1 - dones[i])
             advantages[i] = gae
 
-        # Target returns equal advantages plus baseline value estimates
         returns = advantages + values
         return advantages.detach(), returns.detach()
 
@@ -143,37 +137,32 @@ class BasePPOAgent:
         """
         Updates policy and value network parameters over multiple epochs using minibatch PPO clipped objective.
         """
-        # Extract states, actions, rewards, terms, truncs, and next_states from trajectory list
-        states = torch.stack([torch.from_numpy(t[0]).float() for t in trajectory])
+        states = torch.stack([torch.from_numpy(t[0]).float() for t in trajectory]).to(self.device)
         if self.is_continuous:
-            actions = torch.stack([torch.from_numpy(np.array(t[1], dtype=np.float32)).float() for t in trajectory])
+            actions = torch.stack([torch.from_numpy(np.array(t[1], dtype=np.float32)).float() for t in trajectory]).to(self.device)
             if actions.dim() == 1:
                 actions = actions.unsqueeze(-1)
         else:
-            actions = torch.tensor([t[1] for t in trajectory], dtype=torch.long)
+            actions = torch.tensor([t[1] for t in trajectory], dtype=torch.long, device=self.device)
 
         rewards = [t[4] for t in trajectory]
-        terms = torch.tensor([t[5] for t in trajectory], dtype=torch.float32)
-        truncs = torch.tensor([t[6] for t in trajectory], dtype=torch.float32)
+        terms = torch.tensor([t[5] for t in trajectory], dtype=torch.float32, device=self.device)
+        truncs = torch.tensor([t[6] for t in trajectory], dtype=torch.float32, device=self.device)
         dones = torch.clamp(terms + truncs, 0.0, 1.0)
 
-        # Compute baseline values and log probabilities without tracking gradients
         with torch.no_grad():
             values = self.value_fn(states)
-            next_states = torch.stack([torch.from_numpy(t[7]).float() for t in trajectory])
+            next_states = torch.stack([torch.from_numpy(t[7]).float() for t in trajectory]).to(self.device)
             next_values = self.value_fn(next_states)
 
-            # Re-evaluate distribution for trajectory to obtain target old log probabilities
             old_dist = self.get_dist(states)
             if self.is_continuous:
                 old_logps = old_dist.log_prob(actions).sum(dim=-1).detach()
             else:
                 old_logps = old_dist.log_prob(actions).detach()
 
-        # Calculate GAE advantages and target returns with proper truncation bootstrapping
         advantages, returns = self.compute_gae(rewards, values, next_values, terms, dones)
 
-        # Create DataLoader for minibatched SGD optimization
         dataset = torch.utils.data.TensorDataset(
             states, actions, old_logps, advantages, returns
         )
@@ -185,13 +174,10 @@ class BasePPOAgent:
         v_loss_epoch = 0.0
         e_loss_epoch = 0.0
 
-        # Perform PPO optimization over specified number of epochs
         for _ in range(self.epochs):
             for b_states, b_actions, b_oldlogp, b_adv, b_ret in loader:
-                # Normalize minibatch advantages for numerical stability
                 b_adv = (b_adv - b_adv.mean()) / (b_adv.std() + 1e-8)
 
-                # Forward pass through policy network
                 dist = self.get_dist(b_states)
                 if self.is_continuous:
                     new_logp = dist.log_prob(b_actions).sum(dim=-1)
@@ -200,20 +186,16 @@ class BasePPOAgent:
                     new_logp = dist.log_prob(b_actions)
                     entropy_loss = -dist.entropy().mean()
 
-                # Compute clipped surrogate policy objective ratio
                 ratio = torch.exp(new_logp - b_oldlogp)
                 surr1 = ratio * b_adv
                 surr2 = torch.clamp(ratio, 1 - self.clip_eps, 1 + self.clip_eps) * b_adv
                 policy_loss = -torch.min(surr1, surr2).mean()
 
-                # Compute value function MSE loss
                 value_preds = self.value_fn(b_states)
                 value_loss = F.mse_loss(value_preds, b_ret)
 
-                # Total combined loss
                 loss = policy_loss + self.vf_coef * value_loss + self.ent_coef * entropy_loss
 
-                # Optimization step with gradient clipping
                 self.optimizer.zero_grad()
                 loss.backward()
                 nn.utils.clip_grad_norm_(
@@ -226,6 +208,24 @@ class BasePPOAgent:
                 v_loss_epoch += value_loss.item()
                 e_loss_epoch += entropy_loss.item()
 
-        # Return average epoch losses
         num_updates = self.epochs * len(loader)
         return p_loss_epoch / num_updates, v_loss_epoch / num_updates, e_loss_epoch / num_updates
+
+    def save_checkpoint(self, filepath: str) -> None:
+        """Saves policy, value function, and optimizer weights to disk."""
+        torch.save(
+            {
+                "policy_state_dict": self.policy.state_dict(),
+                "value_fn_state_dict": self.value_fn.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+                "is_continuous": self.is_continuous,
+            },
+            filepath,
+        )
+
+    def load_checkpoint(self, filepath: str) -> None:
+        """Loads policy, value function, and optimizer weights from disk."""
+        checkpoint = torch.load(filepath, map_location=self.device)
+        self.policy.load_state_dict(checkpoint["policy_state_dict"])
+        self.value_fn.load_state_dict(checkpoint["value_fn_state_dict"])
+        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])

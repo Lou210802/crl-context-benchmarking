@@ -12,6 +12,11 @@ from typing import Any, Dict, Optional, Tuple, List
 import numpy as np
 import gymnasium as gym
 
+# Configure global NumPy and Warning filters to prevent third-party library noise (CARL / ConfigSpace)
+np.seterr(divide="ignore", invalid="ignore")
+warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*invalid value encountered in.*divide.*")
+warnings.filterwarnings("ignore", category=UserWarning, message=".*Module .* not found.*")
+
 # Absolute path anchoring relative to project root
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -62,15 +67,21 @@ def sample_contexts(env_name: str, num_contexts: int = 100, seed: int = 42) -> O
     return None
 
 
-def make_env(env_name: str, seed: Optional[int] = None, num_contexts: int = 100) -> gym.Env:
+def make_env(
+    env_name: str,
+    seed: Optional[int] = None,
+    num_contexts: int = 100,
+    context_seed: int = 42,
+) -> gym.Env:
     """
     Instantiates either a standard Gymnasium environment or a CARL benchmark environment.
     If num_contexts > 0, samples varying context instances across episodes.
 
     Args:
         env_name: Name of the environment (e.g., 'CartPole-v1', 'CARLCartPole', 'CARLPendulum').
-        seed: Optional random seed.
+        seed: Optional action space random seed.
         num_contexts: Number of varying context instances to sample (0 for default static context).
+        context_seed: Seed for sampling context variations (42 for training, 9999 for held-out testing).
 
     Returns:
         gym.Env: Instantiated Gymnasium or CARL environment instance.
@@ -83,7 +94,7 @@ def make_env(env_name: str, seed: Optional[int] = None, num_contexts: int = 100)
             if hasattr(carl_envs, env_name):
                 env_cls = getattr(carl_envs, env_name)
                 if num_contexts > 0:
-                    contexts = sample_contexts(env_name, num_contexts=num_contexts, seed=seed if seed is not None else 42)
+                    contexts = sample_contexts(env_name, num_contexts=num_contexts, seed=context_seed)
                     env = env_cls(contexts=contexts)
                 else:
                     env = env_cls()

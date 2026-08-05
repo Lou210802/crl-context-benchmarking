@@ -26,14 +26,24 @@ class ExperimentLogger:
         """
         Saves experiment hyperparameters to config.yaml in the run directory.
         """
+        def sanitize_native_types(obj: Any) -> Any:
+            if isinstance(obj, dict):
+                return {k: sanitize_native_types(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [sanitize_native_types(v) for v in obj]
+            elif hasattr(obj, "item"):
+                return obj.item()
+            return obj
+
+        sanitized_config = sanitize_native_types(config_dict)
         filepath = os.path.join(self.output_dir, "config.yaml")
         try:
             import yaml
             with open(filepath, "w") as f:
-                yaml.dump(config_dict, f, default_flow_style=False, sort_keys=False)
+                yaml.dump(sanitized_config, f, default_flow_style=False, sort_keys=False)
         except ImportError:
             with open(filepath, "w") as f:
-                json.dump(config_dict, f, indent=4)
+                json.dump(sanitized_config, f, indent=4)
         print(f"Hyperparameters saved to {filepath}")
         return filepath
 
