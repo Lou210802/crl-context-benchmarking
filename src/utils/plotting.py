@@ -97,7 +97,9 @@ class Plotter:
         ax.set_xlabel("Step", fontsize=self.axis_fontsize)
         ax.set_ylabel("Mean Return (IQM)", fontsize=self.axis_fontsize)
         ax.tick_params(axis="both", labelsize=self.tick_fontsize)
-        if ax.get_legend():
+        if ax.get_legend() is None:
+            ax.legend(fontsize=self.legend_fontsize, loc="best")
+        else:
             plt.setp(ax.get_legend().get_texts(), fontsize=self.legend_fontsize)
 
         plt.tight_layout()
@@ -262,5 +264,136 @@ class Plotter:
             os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
             plt.savefig(output_path, dpi=300)
             print(f"Probability of improvement plot saved to {output_path}")
+
+        return ax
+
+    def plot_multiple_csv_runs(
+        self,
+        filepaths: Union[List[str], Dict[str, List[str]]],
+        title: str = "Mean Return Comparison",
+        output_path: Optional[str] = None,
+        metric_col: str = "mean_return",
+        step_col: str = "step",
+        use_rliable: bool = True,
+        labels: Optional[Dict[str, str]] = None,
+    ) -> plt.Axes:
+        """
+        Plots mean return learning curves across multiple CSV result files in a single plot.
+
+        Supports both passing a flat list of CSV file paths (auto-grouped by mode/name) or
+        a dictionary mapping custom curve labels to lists of CSV file paths (for multi-seed runs).
+
+        Args:
+            filepaths: List of CSV file paths, OR dict mapping label name -> list of CSV file paths.
+            title: Plot title.
+            output_path: Optional path to save the resulting figure.
+            metric_col: Column name representing return/score (default: "mean_return").
+            step_col: Column name representing steps (default: "step").
+            use_rliable: If True, uses RLiable stratified bootstrap 95% CIs. If False, uses standard mean & std shading.
+            labels: Optional dictionary to rename grouped labels in the plot legend.
+
+        Returns:
+            matplotlib.axes.Axes: The matplotlib axes containing the generated plot.
+        """
+        import re
+        grouped_dfs: Dict[str, List[pd.DataFrame]] = {}
+
+        if isinstance(filepaths, dict):
+            for label, paths in filepaths.items():
+                dfs = [pd.read_csv(p) for p in paths]
+                grouped_dfs[label] = dfs
+        else:
+            for path in filepaths:
+                df = pd.read_csv(path)
+                mode = df.attrs.get("mode")
+                if not mode:
+                    base = os.path.basename(path).replace("_results.csv", "").replace(".csv", "")
+                    mode = re.sub(r"_seed\d+", "", base)
+
+                if labels and mode in labels:
+                    mode = labels[mode]
+
+                if mode not in grouped_dfs:
+                    grouped_dfs[mode] = []
+                grouped_dfs[mode].append(df)
+
+        if labels and isinstance(filepaths, dict):
+            grouped_dfs = {labels.get(k, k): v for k, v in grouped_dfs.items()}
+
+        can_rliable = use_rliable
+        if can_rliable:
+            for label, dfs in grouped_dfs.items():
+                if len(dfs) == 0:
+                    can_rliable = False
+                    break
+
+        if can_rliable:
+            algo_runs: Dict[str, List[np.ndarray]] = {}
+            frames = None
+            for label, dfs in grouped_dfs.items():
+                algo_runs[label] = []
+                for df in dfs:
+                    val_c = metric_col if metric_col in df.columns else df.columns[1]
+                    s_c = step_col if step_col in df.columns else df.columns[0]
+                    algo_runs[label].append(df[val_c].values)
+                    if frames is None:
+                        frames = df[s_c].values
+
+            score_dict: Dict[str, np.ndarray] = {}
+            for algo, runs in algo_runs.items():
+                arr = np.array(runs)
+                score_dict[algo] = np.expand_dims(arr, axis=1)
+
+            iqm_func = lambda x: np.array([metrics.aggregate_iqm(x[..., i]) for i in range(x.shape[-1])])
+            point_estimates, interval_estimates = library.get_interval_estimates(
+                score_dict,
+                iqm_func,
+                reps=self.reps,
+                confidence_interval_size=self.confidence_interval_size,
+            )
+
+            fig, ax = plt.subplots(figsize=(10, 6))
+            plot_utils.plot_sample_efficiency_curve(
+                frames,
+                point_estimates,
+                interval_estimates,
+                algorithms=list(score_dict.keys()),
+                ax=ax,
+            )
+        else:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            combined_records = []
+            for label, dfs in grouped_dfs.items():
+                for df in dfs:
+                    val_c = metric_col if metric_col in df.columns else df.columns[1]
+                    s_c = step_col if step_col in df.columns else df.columns[0]
+                    for s, v in zip(df[s_c], df[val_c]):
+                        combined_records.append({"Group": label, "Step": s, "Value": v})
+
+            combined_df = pd.DataFrame(combined_records)
+            sns.lineplot(
+                data=combined_df,
+                x="Step",
+                y="Value",
+                hue="Group",
+                ax=ax,
+                errorbar="sd",
+            )
+
+        ax.set_title(title, fontsize=self.title_fontsize)
+        ax.set_xlabel("Step", fontsize=self.axis_fontsize)
+        y_label = metric_col.replace("_", " ").title() if metric_col else "Value"
+        ax.set_ylabel(y_label, fontsize=self.axis_fontsize)
+        ax.tick_params(axis="both", labelsize=self.tick_fontsize)
+        if ax.get_legend() is None:
+            ax.legend(fontsize=self.legend_fontsize, loc="best")
+        else:
+            plt.setp(ax.get_legend().get_texts(), fontsize=self.legend_fontsize)
+
+        plt.tight_layout()
+        if output_path:
+            os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+            plt.savefig(output_path, dpi=300)
+            print(f"Plot saved to {output_path}")
 
         return ax

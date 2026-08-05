@@ -2,8 +2,8 @@
 # Hydra configuration for ContextPPOAgent training
 
 env:
-  # Gymnasium / CARL environment name
-  name: CartPole-v1
+  # Gymnasium / CARL environment name (e.g. CARLCartPole, CARLMountainCar, CartPole-v1)
+  name: CARLCartPole
 
 # Global random seed
 seed: 0

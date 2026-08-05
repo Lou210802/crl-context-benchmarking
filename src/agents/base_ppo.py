@@ -2,30 +2,32 @@
 Base Proximal Policy Optimization (PPO) Agent Implementation.
 
 This module contains the BasePPOAgent class implementing clipped surrogate PPO updates
-and Generalized Advantage Estimation (GAE) for discrete action space environments.
+and Generalized Advantage Estimation (GAE) for both discrete and continuous action space environments.
 """
 
-from typing import Any, List, Tuple
+from typing import Any, List, Tuple, Union
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.distributions import Categorical
+from torch.distributions import Categorical, Normal
 
-from src.models.networks import Policy, ValueNetwork
+from src.models.networks import Policy, ContinuousPolicy, ValueNetwork
 
 
 class BasePPOAgent:
     """
     PPO Agent using separate policy (actor) and value (critic) network architectures,
     clipped surrogate objectives, entropy regularization, and Generalized Advantage Estimation (GAE).
+    Supports both discrete (Categorical) and continuous (Gaussian) action spaces.
     """
 
     def __init__(
         self,
         input_dim: int,
         action_dim: int,
+        is_continuous: bool = False,
         lr_actor: float = 3e-4,
         lr_critic: float = 3e-4,
         gamma: float = 0.99,
@@ -48,9 +50,13 @@ class BasePPOAgent:
         self.batch_size = batch_size
         self.ent_coef = ent_coef
         self.vf_coef = vf_coef
+        self.is_continuous = is_continuous
 
         # Instantiate policy network (actor) and value network (critic)
-        self.policy = Policy(input_dim, action_dim, hidden_size)
+        if self.is_continuous:
+            self.policy = ContinuousPolicy(input_dim, action_dim, hidden_size)
+        else:
+            self.policy = Policy(input_dim, action_dim, hidden_size)
         self.value_fn = ValueNetwork(input_dim, hidden_size)
 
         # Set up Adam optimizer for both networks with parameter groups
@@ -62,28 +68,45 @@ class BasePPOAgent:
             eps=1e-5,
         )
 
+    def get_dist(self, states: torch.Tensor) -> Union[Categorical, Normal]:
+        """
+        Constructs action distribution (Categorical for discrete, Normal for continuous) for states.
+        """
+        if self.is_continuous:
+            mean, std = self.policy(states)
+            return Normal(mean, std)
+        else:
+            logits = self.policy(states)
+            return Categorical(logits=logits)
+
     def predict(
         self, state: np.ndarray
-    ) -> Tuple[int, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[Any, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Computes action prediction, log probability, entropy, and state value estimate for a single observation.
         """
         # Convert state numpy array to PyTorch tensor
         t = torch.from_numpy(state).float()
 
-        # Evaluate policy logits and state value estimate without gradient tracking
+        # Evaluate policy distribution and state value estimate without gradient tracking
         with torch.no_grad():
-            logits = self.policy(t)
+            dist = self.get_dist(t)
             val = self.value_fn(t)
+            action = dist.sample()
 
-        # Construct categorical action distribution and sample action
-        dist = Categorical(logits=logits)
-        action = dist.sample()
+            if self.is_continuous:
+                log_prob = dist.log_prob(action).sum(dim=-1)
+                entropy = dist.entropy().sum(dim=-1)
+                act_out = action.squeeze(0).cpu().numpy()
+            else:
+                log_prob = dist.log_prob(action)
+                entropy = dist.entropy()
+                act_out = int(action.item())
 
         return (
-            int(action.item()),
-            dist.log_prob(action),
-            dist.entropy(),
+            act_out,
+            log_prob,
+            entropy,
             val,
         )
 
@@ -122,7 +145,13 @@ class BasePPOAgent:
         """
         # Extract states, actions, rewards, terms, truncs, and next_states from trajectory list
         states = torch.stack([torch.from_numpy(t[0]).float() for t in trajectory])
-        actions = torch.tensor([t[1] for t in trajectory], dtype=torch.long)
+        if self.is_continuous:
+            actions = torch.stack([torch.from_numpy(np.array(t[1], dtype=np.float32)).float() for t in trajectory])
+            if actions.dim() == 1:
+                actions = actions.unsqueeze(-1)
+        else:
+            actions = torch.tensor([t[1] for t in trajectory], dtype=torch.long)
+
         rewards = [t[4] for t in trajectory]
         terms = torch.tensor([t[5] for t in trajectory], dtype=torch.float32)
         truncs = torch.tensor([t[6] for t in trajectory], dtype=torch.float32)
@@ -134,10 +163,12 @@ class BasePPOAgent:
             next_states = torch.stack([torch.from_numpy(t[7]).float() for t in trajectory])
             next_values = self.value_fn(next_states)
 
-            # Re-evaluate logits for trajectory to obtain target old log probabilities
-            old_logits = self.policy(states)
-            old_dist = Categorical(logits=old_logits)
-            old_logps = old_dist.log_prob(actions).detach()
+            # Re-evaluate distribution for trajectory to obtain target old log probabilities
+            old_dist = self.get_dist(states)
+            if self.is_continuous:
+                old_logps = old_dist.log_prob(actions).sum(dim=-1).detach()
+            else:
+                old_logps = old_dist.log_prob(actions).detach()
 
         # Calculate GAE advantages and target returns with proper truncation bootstrapping
         advantages, returns = self.compute_gae(rewards, values, next_values, terms, dones)
@@ -161,9 +192,13 @@ class BasePPOAgent:
                 b_adv = (b_adv - b_adv.mean()) / (b_adv.std() + 1e-8)
 
                 # Forward pass through policy network
-                logits = self.policy(b_states)
-                dist = Categorical(logits=logits)
-                new_logp = dist.log_prob(b_actions)
+                dist = self.get_dist(b_states)
+                if self.is_continuous:
+                    new_logp = dist.log_prob(b_actions).sum(dim=-1)
+                    entropy_loss = -dist.entropy().sum(dim=-1).mean()
+                else:
+                    new_logp = dist.log_prob(b_actions)
+                    entropy_loss = -dist.entropy().mean()
 
                 # Compute clipped surrogate policy objective ratio
                 ratio = torch.exp(new_logp - b_oldlogp)
@@ -174,9 +209,6 @@ class BasePPOAgent:
                 # Compute value function MSE loss
                 value_preds = self.value_fn(b_states)
                 value_loss = F.mse_loss(value_preds, b_ret)
-
-                # Compute entropy regularization loss
-                entropy_loss = -dist.entropy().mean()
 
                 # Total combined loss
                 loss = policy_loss + self.vf_coef * value_loss + self.ent_coef * entropy_loss

@@ -3,7 +3,7 @@ name = "crl-context-benchmarking"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "gymnasium>=1.3.0",
+    "gymnasium[box2d]>=1.3.0",
     "hydra-core>=1.3.4",
     "matplotlib>=3.11.1",
     "numpy>=2.5.1",
@@ -15,6 +15,8 @@ dependencies = [
     "torch>=2.13.0",
     "torchvision>=0.28.0",
     "rliable",
+    "carl-bench",
+    "swig>=4.4.1",
 ]
 
 [build-system]
