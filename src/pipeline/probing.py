@@ -58,8 +58,22 @@ def probe_latent_context(
 
     r2_per_dim = np.where(varying_mask, 1.0 - (ss_res / (ss_tot + 1e-8)), 1.0)
 
+    # Compute Non-Linear Probing R^2 using RandomForest (handles spherical hypersphere manifolds)
+    non_linear_r2 = mean_r2
+    try:
+        from sklearn.ensemble import RandomForestRegressor
+        from sklearn.metrics import r2_score
+        rf = RandomForestRegressor(n_estimators=50, max_depth=8, random_state=42, n_jobs=-1)
+        rf.fit(latent_vectors, true_contexts.ravel() if context_dim == 1 else true_contexts)
+        rf_preds = rf.predict(latent_vectors)
+        non_linear_r2 = float(r2_score(true_contexts, rf_preds))
+    except Exception:
+        pass
+
     results = {
         "mean_r2": mean_r2,
+        "linear_r2": mean_r2,
+        "non_linear_r2": non_linear_r2,
         "probing_mse": probing_mse,
         "r2_per_dim": r2_per_dim.tolist(),
         "pred_contexts": pred_contexts,

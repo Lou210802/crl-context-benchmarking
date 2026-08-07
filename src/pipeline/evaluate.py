@@ -6,11 +6,13 @@ on held-out, unseen physical context instances (eval_context_seed = 9999).
 Includes linear context probing (R^2 determination metric) and 2D PCA latent visualization.
 """
 
+import glob
 import os
 import sys
 import yaml
 from typing import Dict, Any, List, Optional
 import numpy as np
+import pandas as pd
 import torch
 import gymnasium as gym
 import matplotlib.pyplot as plt
@@ -37,6 +39,61 @@ from src.utils.env_utils import (
 from src.utils.history_buffer import HistoryBuffer
 
 
+def plot_run_training_curves(run_dir: str) -> Optional[str]:
+    """
+    Plots training metrics curves (Mean Return, Policy Loss, Value Loss, Representation Loss)
+    from results CSV file found inside run_dir.
+    Saves 'training_curves.png' directly inside run_dir.
+    """
+    csv_files = glob.glob(os.path.join(run_dir, "*_results.csv"))
+    if not csv_files:
+        return None
+
+    csv_path = csv_files[0]
+    try:
+        df = pd.read_csv(csv_path)
+    except Exception:
+        return None
+
+    if "step" not in df.columns:
+        return None
+
+    steps = df["step"].values
+    metric_cols = [c for c in df.columns if c.lower() not in ["step", "unnamed: 0", "index"]]
+    if not metric_cols:
+        return None
+
+    num_metrics = len(metric_cols)
+    cols_per_row = 2
+    rows = int(np.ceil(num_metrics / cols_per_row))
+
+    sns.set_theme(style="whitegrid", palette="muted")
+    fig, axes = plt.subplots(rows, cols_per_row, figsize=(11, 3.8 * rows), dpi=300)
+    if num_metrics == 1:
+        axes_list = [axes]
+    else:
+        axes_list = axes.flatten()
+
+    for idx, col in enumerate(metric_cols):
+        ax = axes_list[idx]
+        color = "#1f77b4" if "return" in col.lower() else "#ff7f0e" if "loss" in col.lower() else "#2ca02c"
+        ax.plot(steps, df[col].values, linewidth=2.0, color=color)
+        ax.set_title(col.replace("_", " ").title(), fontsize=12, fontweight="bold")
+        ax.set_xlabel("Environment Step", fontsize=10, fontweight="bold")
+        ax.set_ylabel("Value", fontsize=10, fontweight="bold")
+        sns.despine(ax=ax, top=True, right=True)
+
+    for idx in range(num_metrics, len(axes_list)):
+        fig.delaxes(axes_list[idx])
+
+    plt.tight_layout()
+    output_path = os.path.join(run_dir, "training_curves.png")
+    plt.savefig(output_path, dpi=300)
+    plt.close(fig)
+    print(f"  [SUCCESS] Training Curves Plot saved to '{output_path}'")
+    return output_path
+
+
 def evaluate_run_directory(
     run_dir: str,
     eval_episodes: int = 20,
@@ -46,17 +103,7 @@ def evaluate_run_directory(
 ) -> Dict[str, Any]:
     """
     Evaluates a trained model checkpoint on held-out physical context instances.
-    Performs linear and non-linear (MLP) context probing (R^2 metrics) and 2D PCA visualization for representation models.
-
-    Args:
-        run_dir: Path to trained run directory containing config.yaml and agent.pt.
-        eval_episodes: Number of evaluation episodes to run.
-        eval_context_seed: Seed for sampling held-out evaluation contexts (default: 9999).
-        num_eval_contexts: Number of unseen context variations (default: 20).
-        vary_contexts: Specific physical context parameters to vary during evaluation (e.g. ['gravity']). If None, uses config value.
-
-    Returns:
-        Dict[str, Any]: Dictionary containing evaluation metrics (mean return, probing R^2 scores, etc.).
+    Performs linear context probing (R^2 metrics), 2D PCA visualization, and training curves plotting.
     """
     run_dir = resolve_path(run_dir)
     config_path = os.path.join(run_dir, "config.yaml")
@@ -125,7 +172,10 @@ def evaluate_run_directory(
             )
             cpc_ckpt = os.path.join(run_dir, "cpc_encoder.pt")
             if os.path.exists(cpc_ckpt):
-                cpc_encoder.load_state_dict(torch.load(cpc_ckpt, map_location=device))
+                try:
+                    cpc_encoder.load_state_dict(torch.load(cpc_ckpt, map_location=device), strict=False)
+                except Exception as e:
+                    print(f"[WARNING] Skipping legacy incompatible CPC checkpoint in '{run_dir}': {e}")
             cpc_encoder.eval()
 
     # 3. Instantiate evaluation environment on held-out context seed
@@ -157,11 +207,26 @@ def evaluate_run_directory(
 
         while not done:
             # Extract ground-truth physical context values for probing
+            ctx_dict = None
             if isinstance(obs, dict) and "context" in obs:
                 ctx_dict = obs["context"]
+            elif hasattr(eval_env, "context"):
+                ctx_dict = getattr(eval_env, "context")
+            elif hasattr(eval_env, "unwrapped") and hasattr(eval_env.unwrapped, "context"):
+                ctx_dict = getattr(eval_env.unwrapped, "context")
+
+            if ctx_dict:
+                if vary_contexts:
+                    v_set = set(v.lower() for v in vary_contexts)
+                    filtered_dict = {k: v for k, v in ctx_dict.items() if k.lower() in v_set}
+                    if not filtered_dict:
+                        filtered_dict = ctx_dict
+                else:
+                    filtered_dict = ctx_dict
+
                 if not context_keys:
-                    context_keys = list(ctx_dict.keys())
-                true_c = np.array(list(ctx_dict.values()), dtype=np.float32)
+                    context_keys = list(filtered_dict.keys())
+                true_c = np.array([filtered_dict[k] for k in context_keys], dtype=np.float32)
             else:
                 true_c = np.array([0.0], dtype=np.float32)
 
@@ -182,7 +247,6 @@ def evaluate_run_directory(
                 raw_state = extract_raw_state(obs)
                 policy_input = np.concatenate([raw_state, z_np], axis=0)
 
-                # Store for linear and MLP context probing and PCA plot
                 collected_z_vectors.append(z_np)
                 collected_true_contexts.append(true_c)
 
@@ -220,6 +284,7 @@ def evaluate_run_directory(
         # Linear Context Probing
         probing_results = probe_latent_context(z_arr, c_arr, context_keys=context_keys)
         eval_results["probing_r2"] = probing_results["mean_r2"]
+        eval_results["non_linear_probing_r2"] = probing_results["non_linear_r2"]
         eval_results["probing_mse"] = probing_results["probing_mse"]
 
         # PCA Visualization
@@ -246,12 +311,18 @@ def evaluate_run_directory(
             output_path=prob_plot_path,
         )
 
+    # 5. Automatically plot training curves image inside run_dir
+    plot_run_training_curves(run_dir)
+
     # Save evaluation summary to YAML
     eval_yaml_path = os.path.join(run_dir, "evaluation_summary.yaml")
     with open(eval_yaml_path, "w") as f:
         yaml.dump(eval_results, f, default_flow_style=False)
 
-    prob_str = f" | Linear R^2: {eval_results['probing_r2']:5.3f}" if "probing_r2" in eval_results else ""
+    prob_str = ""
+    if "probing_r2" in eval_results:
+        nl_r2 = eval_results.get("non_linear_probing_r2", eval_results["probing_r2"])
+        prob_str = f" | Linear R^2: {eval_results['probing_r2']:5.3f} | Non-Linear R^2: {nl_r2:5.3f}"
     print(
         f"[EVAL RESULT] {mode.upper():12s} | "
         f"Mean Return (Unseen Contexts): {eval_results['eval_mean_return']:6.1f} ± {eval_results['eval_std_return']:4.1f}"

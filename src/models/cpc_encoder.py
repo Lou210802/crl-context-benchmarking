@@ -77,26 +77,39 @@ class CPCContextEncoder(nn.Module):
             nn.Linear(self.hidden_dim, self.latent_dim),
         )
 
-        # Bilinear / Linear projection matrices W_k for predicting k steps into the future
+        self.feature_norm = nn.LayerNorm(self.feature_dim)
+        self.layer_norm = nn.LayerNorm(self.hidden_dim)
+
+        # Predictor Heads W_k mapping latent context z_t to target transition embeddings
+        pred_in_dim = self.latent_dim
         self.predictors = nn.ModuleList(
-            [nn.Linear(self.latent_dim, self.latent_dim, bias=False) for _ in range(self.predict_horizon)]
+            [
+                nn.Sequential(
+                    nn.Linear(pred_in_dim, self.hidden_dim),
+                    nn.ReLU(),
+                    nn.Linear(self.hidden_dim, self.latent_dim),
+                )
+                for _ in range(self.predict_horizon)
+            ]
+        )
+
+        # Auxiliary Dynamics MSE Decoder Head (reconstructs delta_s and reward directly for continuous supervision)
+        dyn_in_dim = self.state_dim + self.action_dim + self.latent_dim
+        self.dyn_decoder = nn.Sequential(
+            nn.Linear(dyn_in_dim, self.hidden_dim),
+            nn.ReLU(),
+            nn.Linear(self.hidden_dim, self.state_dim + 1),
         )
 
         self.to(self.device)
 
     def encode(self, history_sequence: torch.Tensor) -> torch.Tensor:
         """
-        Encodes trajectory history sequence into a compact latent context representation vector z_t.
-
-        Args:
-            history_sequence: History tensor of shape (batch_size, seq_len, feature_dim).
-
-        Returns:
-            torch.Tensor: Context vector z_t of shape (batch_size, latent_dim).
+        Encodes trajectory history sequence into a compact latent context vector z_t.
         """
-        history_sequence = history_sequence.to(self.device)
+        history_sequence = self.feature_norm(history_sequence.to(self.device))
         output, _ = self.gru(history_sequence)
-        last_hidden = F.relu(output[:, -1, :])
+        last_hidden = self.layer_norm(output[:, -1, :])
         z_t = self.fc_latent(last_hidden)
         return z_t
 
@@ -111,53 +124,99 @@ class CPCContextEncoder(nn.Module):
         action: torch.Tensor,
         target_next_state: torch.Tensor,
         target_reward: torch.Tensor,
+        pos_history_sequence: Optional[torch.Tensor] = None,
+        ep_ids: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         """
-        Computes multi-step InfoNCE contrastive predictive loss across batch samples.
-
-        Args:
-            history_sequence: Tensor of shape (batch_size, seq_len, feature_dim).
-            state: Current state tensor of shape (batch_size, state_dim).
-            action: Action tensor of shape (batch_size, action_dim).
-            target_next_state: Target next state tensor of shape (batch_size, state_dim).
-            target_reward: Target reward tensor of shape (batch_size, 1).
-
-        Returns:
-            Dict[str, torch.Tensor]: Dictionary containing total 'loss' and 'cpc_loss'.
+        Computes Multi-Step or Inter-Instance InfoNCE contrastive predictive loss.
+        Applies false-negative masking to ignore distractors from the same environment context episode,
+        and detaches target embeddings for stable InfoNCE gradients.
         """
         history_sequence = history_sequence.to(self.device)
+        batch_size = history_sequence.size(0)
+        z_t = self.encode(history_sequence)  # (batch_size, latent_dim)
+        z_t_norm = F.normalize(z_t, p=2, dim=-1)
+
+        # Supervised Context Contrastive (SupCon) Loss over same-context history pairs
+        supcon_loss = torch.tensor(0.0, device=self.device)
+        if ep_ids is not None and batch_size > 1:
+            ep_ids = ep_ids.to(self.device)
+            eye = torch.eye(batch_size, device=self.device, dtype=torch.bool)
+            same_ctx = (ep_ids.unsqueeze(0) == ep_ids.unsqueeze(1)) & (~eye)
+            diff_ctx = (ep_ids.unsqueeze(0) != ep_ids.unsqueeze(1))
+
+            sim_matrix = torch.matmul(z_t_norm, z_t_norm.T) / self.temperature
+            max_sim, _ = torch.max(sim_matrix, dim=1, keepdim=True)
+            logits = sim_matrix - max_sim.detach()
+            exp_logits = torch.exp(logits)
+
+            sup_losses = []
+            for i in range(batch_size):
+                pos_idx = torch.where(same_ctx[i])[0]
+                if len(pos_idx) > 0:
+                    neg_sum = torch.sum(exp_logits[i, diff_ctx[i]])
+                    pos_exp = exp_logits[i, pos_idx]
+                    loss_i = -torch.log(pos_exp / (pos_exp + neg_sum + 1e-8)).mean()
+                    sup_losses.append(loss_i)
+
+            if sup_losses:
+                supcon_loss = torch.stack(sup_losses).mean()
+
         state = state.to(self.device)
         action = action.to(self.device)
         target_next_state = target_next_state.to(self.device)
         target_reward = target_reward.to(self.device)
 
-        batch_size = history_sequence.size(0)
-        z_t = self.encode(history_sequence)  # (batch_size, latent_dim)
+        if target_next_state.ndim == 2:
+            target_next_state = target_next_state.unsqueeze(1)
+            target_reward = target_reward.unsqueeze(1)
 
-        # Build target representation e_target from target next state and reward
-        target_input = torch.cat([target_next_state, target_reward], dim=-1)
-        target_e = self.target_encoder(target_input)  # (batch_size, latent_dim)
-        target_e = F.normalize(target_e, p=2, dim=-1)
-
+        horizon = target_next_state.size(1)
         total_infonce_loss = torch.tensor(0.0, device=self.device)
+        total_aux_loss = torch.tensor(0.0, device=self.device)
+        eval_horizon = min(self.predict_horizon, horizon)
 
-        for k in range(self.predict_horizon):
-            pred_k = self.predictors[k](z_t)  # (batch_size, latent_dim)
+        neg_same_ep_mask = None
+        if ep_ids is not None:
+            ep_ids = ep_ids.to(self.device)
+            same_ep_mask = (ep_ids.unsqueeze(0) == ep_ids.unsqueeze(1))
+            eye_mask = torch.eye(batch_size, device=self.device, dtype=torch.bool)
+            neg_same_ep_mask = same_ep_mask & (~eye_mask)
+
+        for k in range(eval_horizon):
+            target_next_s_k = target_next_state[:, k, :]
+            target_r_k = target_reward[:, k, :]
+            curr_s_k = state[:, k, :] if state.shape[1] > k else state[:, 0, :]
+            delta_s_k = target_next_s_k - curr_s_k
+
+            target_input_k = torch.cat([delta_s_k, target_r_k], dim=-1)
+            target_e_k = self.target_encoder(target_input_k)
+            target_e_k = F.normalize(target_e_k, p=2, dim=-1).detach()
+
+            pred_in_k = z_t_norm
+            pred_k = self.predictors[k](pred_in_k)  # (batch_size, latent_dim)
             pred_k = F.normalize(pred_k, p=2, dim=-1)
 
-            # Similarity logits matrix: (batch_size, batch_size)
-            # Entry (i, j) is dot product between prediction for sample i and target for sample j
-            logits = torch.matmul(pred_k, target_e.T) / self.temperature
-
-            # Ground truth targets for InfoNCE contrastive loss: positive pair is on diagonal i == j
+            logits = torch.matmul(pred_k, target_e_k.T) / self.temperature
             labels = torch.arange(batch_size, device=self.device, dtype=torch.long)
-
             loss_k = F.cross_entropy(logits, labels)
             total_infonce_loss = total_infonce_loss + loss_k
 
-        mean_cpc_loss = total_infonce_loss / float(self.predict_horizon)
+            # Auxiliary Dynamics MSE Loss for continuous parameter regression
+            act_k = action[:, k, :] if action.shape[1] > k else action[:, 0, :]
+            dyn_pred_k = self.dyn_decoder(torch.cat([curr_s_k, act_k, z_t], dim=-1))
+            dyn_target_k = torch.cat([delta_s_k, target_r_k], dim=-1)
+            aux_loss_k = F.mse_loss(dyn_pred_k, dyn_target_k)
+            total_aux_loss = total_aux_loss + aux_loss_k
+
+        mean_infonce_loss = total_infonce_loss / float(eval_horizon)
+        mean_aux_loss = total_aux_loss / float(eval_horizon)
+        combined_loss = supcon_loss + mean_infonce_loss + mean_aux_loss
 
         return {
-            "loss": mean_cpc_loss,
-            "cpc_loss": mean_cpc_loss,
+            "loss": combined_loss,
+            "cpc_loss": mean_infonce_loss,
+            "supcon_loss": supcon_loss,
+            "aux_dyn_loss": mean_aux_loss,
         }
+

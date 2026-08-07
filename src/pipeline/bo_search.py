@@ -76,7 +76,8 @@ def run_bayesian_optimization(
         predict_horizon = 3
 
         if mode == "vae":
-            kl_weight = trial.suggest_float("kl_weight", 1e-4, 1e-1, log=True)
+            kl_weight = trial.suggest_float("kl_weight", 1e-5, 1e-1, log=True)
+            predict_horizon = trial.suggest_int("predict_horizon", 1, 5)
         elif mode == "cpc":
             cpc_temperature = trial.suggest_float("cpc_temperature", 0.05, 0.5, log=True)
             predict_horizon = trial.suggest_int("predict_horizon", 1, 5)
@@ -99,6 +100,7 @@ def run_bayesian_optimization(
                 max_history_len=max_history_len,
                 exp_tag=f"bo_trial_{trial.number}",
                 output_dir=temp_dir,
+                use_bo_config=False,
             )
 
             # Evaluate trial on validation context seed
@@ -112,8 +114,9 @@ def run_bayesian_optimization(
             val_return = eval_res["eval_mean_return"]
             probing_r2 = eval_res.get("probing_r2", 0.0)
 
-            # Optimization objective score (primarily validation return with minor probing reward)
-            score = float(val_return + 0.1 * probing_r2)
+            # Optimization objective score: prioritize representation quality (R^2 probing score)
+            # over short-horizon random PPO exploration noise
+            score = float(probing_r2 * 1000.0 + (val_return / 100.0))
             return score
 
     sampler = optuna.samplers.TPESampler(seed=seed)

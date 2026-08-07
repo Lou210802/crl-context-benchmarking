@@ -38,6 +38,21 @@ from src.utils.history_buffer import HistoryBuffer
 from src.utils.plotting import Plotter
 
 
+def _get_context_id(env, obs=None) -> int:
+    ctx = None
+    if isinstance(obs, dict) and "context" in obs:
+        ctx = obs["context"]
+    elif hasattr(env, "context"):
+        ctx = getattr(env, "context")
+    elif hasattr(env, "unwrapped") and hasattr(env.unwrapped, "context"):
+        ctx = getattr(env.unwrapped, "context")
+
+    if isinstance(ctx, dict):
+        g = ctx.get("gravity", ctx.get("g", 0.0))
+        return int(round(float(g) * 10))
+    return 0
+
+
 def train_single_run(
     mode: str = "context_free",
     env_name: str = "CARLPendulum",
@@ -56,52 +71,36 @@ def train_single_run(
     max_history_len: int = 25,
     exp_tag: str = "",
     output_dir: str = "results",
+    use_bo_config: bool = True,
 ) -> str:
     """
     Trains a single RL model checkpoint on training context environments.
-
-    Args:
-        mode: Algorithm mode ('context_free', 'oracle', 'vae', 'cpc').
-        env_name: Environment name (e.g., 'CARLPendulum', 'CARLCartPole').
-        total_steps: Total interaction steps.
-        rollout_steps: PPO rollout step size.
-        seed: Model random seed.
-        num_contexts: Number of training context instances (default: 100).
-        train_context_seed: Context sampling seed for training set (default: 42).
-        vary_contexts: Optional list of physical context parameters to vary (e.g. ['gravity'], ['g', 'l']).
-        latent_dim: Latent context dimension z_t (default: 8).
-        hidden_dim: Encoder hidden dimension (default: 64).
-        encoder_lr: Representation encoder learning rate (default: 3e-4).
-        kl_weight: VAE KL loss weight (default: 1e-3).
-        cpc_temperature: CPC InfoNCE temperature parameter (default: 0.1).
-        predict_horizon: CPC future step prediction horizon (default: 3).
-        max_history_len: History buffer sequence length (default: 25).
-        exp_tag: Optional run tag.
-        output_dir: Base directory to save run folder (default: 'results').
-
-    Returns:
-        str: Absolute path to the created run directory.
     """
     output_dir = resolve_path(output_dir)
 
-    # Automatically load tuned BO hyperparameters if saved config file exists
-    best_yaml_path = resolve_path(os.path.join("configs", f"best_hyperparams_{mode}.yaml"))
-    if os.path.exists(best_yaml_path):
-        try:
-            with open(best_yaml_path, "r") as f:
-                bo_data = yaml.safe_load(f)
-            if bo_data and "hyperparameters" in bo_data:
-                hp = bo_data["hyperparameters"]
-                latent_dim = hp.get("latent_dim", latent_dim)
-                hidden_dim = hp.get("hidden_dim", hidden_dim)
-                encoder_lr = hp.get("encoder_lr", encoder_lr)
-                kl_weight = hp.get("kl_weight", kl_weight)
-                cpc_temperature = hp.get("cpc_temperature", cpc_temperature)
-                predict_horizon = hp.get("predict_horizon", predict_horizon)
-                max_history_len = hp.get("max_history_len", max_history_len)
-                print(f"[BO CONFIG] Loaded tuned BO hyperparameters for '{mode.upper()}' from '{best_yaml_path}'")
-        except Exception as e:
-            print(f"[WARNING] Could not load BO hyperparameters from '{best_yaml_path}': {e}")
+    # Automatically load tuned BO hyperparameters if saved config file exists and requested
+    if use_bo_config:
+        best_yaml_path = resolve_path(os.path.join("configs", f"best_hyperparams_{mode}.yaml"))
+        if os.path.exists(best_yaml_path):
+            try:
+                with open(best_yaml_path, "r") as f:
+                    bo_data = yaml.safe_load(f)
+                if bo_data and "hyperparameters" in bo_data:
+                    cfg_env = bo_data.get("env_name", None)
+                    if cfg_env is None or cfg_env.lower() == env_name.lower():
+                        hp = bo_data["hyperparameters"]
+                        latent_dim = hp.get("latent_dim", latent_dim)
+                        hidden_dim = hp.get("hidden_dim", hidden_dim)
+                        encoder_lr = hp.get("encoder_lr", encoder_lr)
+                        kl_weight = hp.get("kl_weight", kl_weight)
+                        cpc_temperature = hp.get("cpc_temperature", cpc_temperature)
+                        predict_horizon = hp.get("predict_horizon", predict_horizon)
+                        max_history_len = hp.get("max_history_len", max_history_len)
+                        print(f"[BO CONFIG] Loaded tuned BO hyperparameters for '{mode.upper()}' ({env_name}) from '{best_yaml_path}'")
+                    else:
+                        print(f"[BO CONFIG] Ignored BO hyperparams for '{mode.upper()}' because environment mismatch ({cfg_env} vs {env_name})")
+            except Exception as e:
+                print(f"[WARNING] Could not load BO hyperparameters from '{best_yaml_path}': {e}")
 
     # Restrict PyTorch thread count per worker process to 1 thread to avoid CPU thread contention
     torch.set_num_threads(1)
@@ -161,6 +160,7 @@ def train_single_run(
                 action_dim=action_dim,
                 latent_dim=latent_dim,
                 hidden_dim=hidden_dim,
+                predict_horizon=predict_horizon,
                 kl_weight=kl_weight,
                 device=device,
             )
@@ -230,6 +230,7 @@ def train_single_run(
         trajectory = []
 
         for _ in range(rollout_steps):
+            context_id = _get_context_id(env, curr_obs)
             if mode in ["context_free", "oracle"]:
                 policy_input = extract_input(curr_obs, env, mode)
                 action, logp, ent, val = agent.predict(policy_input)
@@ -237,7 +238,7 @@ def train_single_run(
                 done = term or trunc
                 next_policy_input = extract_input(next_obs, env, mode)
 
-                trajectory.append((policy_input, action, logp, ent, reward, term, trunc, next_policy_input, None))
+                trajectory.append((policy_input, action, logp, ent, reward, term, trunc, next_policy_input, None, None, None, context_id))
             else:
                 raw_state = extract_raw_state(curr_obs)
                 policy_input = np.concatenate([raw_state, curr_z_np], axis=0)
@@ -265,6 +266,7 @@ def train_single_run(
                     curr_hist_tensor,
                     raw_state,
                     next_raw_state,
+                    context_id,
                 ))
 
                 curr_hist_tensor = next_hist_tensor
@@ -288,28 +290,91 @@ def train_single_run(
         # Update representation encoder network (VAE / CPC)
         repr_loss_val = 0.0
         if mode in ["vae", "cpc"] and encoder_optimizer is not None:
-            hist_batch = torch.cat([step[8] for step in trajectory], dim=0)
-            state_batch = torch.tensor(np.array([step[9] for step in trajectory]), dtype=torch.float32)
+            N = len(trajectory)
+            K = max(1, predict_horizon)
 
-            raw_actions = [step[1] for step in trajectory]
-            if is_continuous:
-                action_batch = torch.tensor(np.array(raw_actions), dtype=torch.float32)
-            else:
-                action_batch = F.one_hot(torch.tensor(raw_actions, dtype=torch.long), num_classes=action_dim).float()
+            hist_list = []
+            state_seq_list = []
+            action_seq_list = []
+            next_state_seq_list = []
+            reward_seq_list = []
+            ep_ids = []
 
-            next_state_batch = torch.tensor(np.array([step[10] for step in trajectory]), dtype=torch.float32)
-            reward_batch = torch.tensor(np.array([step[4] for step in trajectory]), dtype=torch.float32).unsqueeze(-1)
+            for idx in range(N):
+                hist_list.append(trajectory[idx][8])
+                ep_ids.append(trajectory[idx][11])
 
-            encoder_optimizer.zero_grad()
-            if mode == "vae" and vae_encoder is not None:
-                loss_dict = vae_encoder.compute_loss(hist_batch, state_batch, action_batch, next_state_batch, reward_batch)
-            elif mode == "cpc" and cpc_encoder is not None:
-                loss_dict = cpc_encoder.compute_loss(hist_batch, state_batch, action_batch, next_state_batch, reward_batch)
-            
-            repr_loss = loss_dict["loss"]
-            repr_loss.backward()
-            encoder_optimizer.step()
-            repr_loss_val = repr_loss.item()
+                s_seq, a_seq, ns_seq, r_seq = [], [], [], []
+                curr_i = idx
+                for k in range(K):
+                    st = trajectory[curr_i]
+                    s_seq.append(st[9])
+                    raw_act = st[1]
+                    if is_continuous:
+                        a_seq.append(np.array(raw_act, dtype=np.float32))
+                    else:
+                        act_vec = np.zeros(action_dim, dtype=np.float32)
+                        act_vec[int(raw_act)] = 1.0
+                        a_seq.append(act_vec)
+                    ns_seq.append(st[10])
+                    r_seq.append([st[4]])
+
+                    done = st[5] or st[6]
+                    if not done and curr_i + 1 < N:
+                        curr_i += 1
+
+                state_seq_list.append(s_seq)
+                action_seq_list.append(a_seq)
+                next_state_seq_list.append(ns_seq)
+                reward_seq_list.append(r_seq)
+
+            hist_batch = torch.cat(hist_list, dim=0)
+            state_seq_batch = torch.tensor(np.array(state_seq_list), dtype=torch.float32)
+            action_seq_batch = torch.tensor(np.array(action_seq_list), dtype=torch.float32)
+            next_state_seq_batch = torch.tensor(np.array(next_state_seq_list), dtype=torch.float32)
+            reward_seq_batch = torch.tensor(np.array(reward_seq_list), dtype=torch.float32)
+            ep_ids = np.array(ep_ids)
+
+            encoder_epochs = 1
+            batch_size = 64
+            num_samples = len(hist_batch)
+            indices = np.arange(num_samples)
+
+            active_encoder = vae_encoder if mode == "vae" else cpc_encoder
+
+            for epoch in range(encoder_epochs):
+                np.random.shuffle(indices)
+                for start_idx in range(0, num_samples, batch_size):
+                    end_idx = min(start_idx + batch_size, num_samples)
+                    mb_idx = indices[start_idx:end_idx]
+
+                    mb_hist = hist_batch[mb_idx]
+                    mb_state = state_seq_batch[mb_idx]
+                    mb_action = action_seq_batch[mb_idx]
+                    mb_next_state = next_state_seq_batch[mb_idx]
+                    mb_reward = reward_seq_batch[mb_idx]
+                    mb_ep_ids = torch.tensor(ep_ids[mb_idx], dtype=torch.long, device=device)
+
+                    encoder_optimizer.zero_grad()
+                    if mode == "vae" and vae_encoder is not None:
+                        loss_dict = vae_encoder.compute_loss(mb_hist, mb_state, mb_action, mb_next_state, mb_reward)
+                    elif mode == "cpc" and cpc_encoder is not None:
+                        loss_dict = cpc_encoder.compute_loss(
+                            mb_hist,
+                            mb_state,
+                            mb_action,
+                            mb_next_state,
+                            mb_reward,
+                            ep_ids=mb_ep_ids,
+                        )
+
+                    repr_loss = loss_dict["loss"]
+                    repr_loss.backward()
+                    if active_encoder is not None:
+                        torch.nn.utils.clip_grad_norm_(active_encoder.parameters(), max_norm=1.0)
+                    encoder_optimizer.step()
+                    repr_loss_val = repr_loss.item()
+                    last_loss_dict = {k: v.item() for k, v in loss_dict.items()}
 
         # Update PPO Agent
         ppo_traj = [(s, a, lp, e, r, tm, tr, ns, h) for (s, a, lp, e, r, tm, tr, ns, h, *_) in trajectory]
@@ -329,11 +394,26 @@ def train_single_run(
             log_dict["vae_loss"] = repr_loss_val
         elif mode == "cpc":
             log_dict["cpc_loss"] = repr_loss_val
+            if 'last_loss_dict' in locals():
+                log_dict["infonce_loss"] = last_loss_dict.get("cpc_loss", 0.0)
+                log_dict["supcon_loss"] = last_loss_dict.get("supcon_loss", 0.0)
+                log_dict["aux_dyn_loss"] = last_loss_dict.get("aux_dyn_loss", 0.0)
 
         logger.log(log_dict)
 
         loss_label = "VAE" if mode == "vae" else "CPC"
-        loss_str = f"{loss_label} Loss: {repr_loss_val:6.3f} | " if mode in ["vae", "cpc"] else ""
+        loss_str = ""
+        if mode == "vae":
+            loss_str = f"VAE Loss: {repr_loss_val:6.3f} | "
+        elif mode == "cpc":
+            if 'last_loss_dict' in locals():
+                inf = last_loss_dict.get("cpc_loss", 0.0)
+                sup = last_loss_dict.get("supcon_loss", 0.0)
+                aux = last_loss_dict.get("aux_dyn_loss", 0.0)
+                loss_str = f"CPC Total: {repr_loss_val:5.2f} [InfoNCE: {inf:4.2f} | SupCon: {sup:4.2f} | AuxMSE: {aux:4.2f}] | "
+            else:
+                loss_str = f"CPC Loss: {repr_loss_val:6.3f} | "
+
         print(
             f"Step {global_step:7d}/{total_steps:7d} | "
             f"Mean Return (last 10 eps): {mean_ret:6.1f} | "
