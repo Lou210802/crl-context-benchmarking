@@ -22,6 +22,7 @@ if PROJECT_ROOT not in sys.path:
 
 from src.agents.base_ppo import BasePPOAgent
 from src.models.vae_encoder import VAEContextEncoder
+from src.models.cpc_encoder import CPCContextEncoder
 from src.pipeline.probing import probe_latent_context, visualize_latent_space_pca
 from src.utils.env_utils import (
     make_env,
@@ -67,6 +68,9 @@ def evaluate_run_directory(
     is_continuous = config["is_continuous"]
     raw_state_dim = config["raw_state_dim"]
     latent_dim = config.get("latent_dim", 8)
+    hidden_dim = config.get("hidden_dim", 64)
+    predict_horizon = config.get("predict_horizon", 3)
+    cpc_temperature = config.get("cpc_temperature", 0.1)
     max_history_len = config.get("max_history_len", 25)
 
     device = torch.device("cpu")
@@ -79,6 +83,7 @@ def evaluate_run_directory(
 
     # 2. Instantiate and load encoder if representation mode
     vae_encoder: Optional[VAEContextEncoder] = None
+    cpc_encoder: Optional[CPCContextEncoder] = None
     history_buf: Optional[HistoryBuffer] = None
 
     if mode not in ["context_free", "oracle"]:
@@ -93,12 +98,27 @@ def evaluate_run_directory(
                 state_dim=raw_state_dim,
                 action_dim=action_dim,
                 latent_dim=latent_dim,
+                hidden_dim=hidden_dim,
                 device=device,
             )
             vae_ckpt = os.path.join(run_dir, "vae_encoder.pt")
             if os.path.exists(vae_ckpt):
                 vae_encoder.load_state_dict(torch.load(vae_ckpt, map_location=device))
             vae_encoder.eval()
+        elif mode == "cpc":
+            cpc_encoder = CPCContextEncoder(
+                state_dim=raw_state_dim,
+                action_dim=action_dim,
+                latent_dim=latent_dim,
+                hidden_dim=hidden_dim,
+                predict_horizon=predict_horizon,
+                temperature=cpc_temperature,
+                device=device,
+            )
+            cpc_ckpt = os.path.join(run_dir, "cpc_encoder.pt")
+            if os.path.exists(cpc_ckpt):
+                cpc_encoder.load_state_dict(torch.load(cpc_ckpt, map_location=device))
+            cpc_encoder.eval()
 
     # 3. Instantiate evaluation environment on held-out context seed
     eval_env = make_env(
@@ -144,6 +164,8 @@ def evaluate_run_directory(
                     if mode == "vae" and vae_encoder is not None:
                         mu_z, _ = vae_encoder.encode(hist_tensor)
                         z_t = mu_z
+                    elif mode == "cpc" and cpc_encoder is not None:
+                        z_t = cpc_encoder.encode(hist_tensor)
                     else:
                         z_t = torch.zeros((1, latent_dim), dtype=torch.float32)
                     z_np = z_t.squeeze(0).cpu().numpy()
@@ -154,6 +176,7 @@ def evaluate_run_directory(
                 # Store for linear context probing and PCA plot
                 collected_z_vectors.append(z_np)
                 collected_true_contexts.append(true_c)
+
 
             action, _, _, _ = agent.predict(policy_input)
             next_obs, reward, term, trunc, _ = eval_env.step(action)

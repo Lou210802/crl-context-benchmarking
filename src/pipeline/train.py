@@ -17,12 +17,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 import gymnasium as gym
 
+import yaml
+
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from src.agents.base_ppo import BasePPOAgent
 from src.models.vae_encoder import VAEContextEncoder
+from src.models.cpc_encoder import CPCContextEncoder
 from src.utils.env_utils import (
     make_env,
     sample_contexts,
@@ -44,6 +47,11 @@ def train_single_run(
     num_contexts: int = 100,
     train_context_seed: int = 42,
     latent_dim: int = 8,
+    hidden_dim: int = 64,
+    encoder_lr: float = 3e-4,
+    kl_weight: float = 1e-3,
+    cpc_temperature: float = 0.1,
+    predict_horizon: int = 3,
     max_history_len: int = 25,
     exp_tag: str = "",
     output_dir: str = "results",
@@ -60,6 +68,11 @@ def train_single_run(
         num_contexts: Number of training context instances (default: 100).
         train_context_seed: Context sampling seed for training set (default: 42).
         latent_dim: Latent context dimension z_t (default: 8).
+        hidden_dim: Encoder hidden dimension (default: 64).
+        encoder_lr: Representation encoder learning rate (default: 3e-4).
+        kl_weight: VAE KL loss weight (default: 1e-3).
+        cpc_temperature: CPC InfoNCE temperature parameter (default: 0.1).
+        predict_horizon: CPC future step prediction horizon (default: 3).
         max_history_len: History buffer sequence length (default: 25).
         exp_tag: Optional run tag.
         output_dir: Base directory to save run folder (default: 'results').
@@ -69,8 +82,28 @@ def train_single_run(
     """
     output_dir = resolve_path(output_dir)
 
+    # Automatically load tuned BO hyperparameters if saved config file exists
+    best_yaml_path = resolve_path(os.path.join("configs", f"best_hyperparams_{mode}.yaml"))
+    if os.path.exists(best_yaml_path):
+        try:
+            with open(best_yaml_path, "r") as f:
+                bo_data = yaml.safe_load(f)
+            if bo_data and "hyperparameters" in bo_data:
+                hp = bo_data["hyperparameters"]
+                latent_dim = hp.get("latent_dim", latent_dim)
+                hidden_dim = hp.get("hidden_dim", hidden_dim)
+                encoder_lr = hp.get("encoder_lr", encoder_lr)
+                kl_weight = hp.get("kl_weight", kl_weight)
+                cpc_temperature = hp.get("cpc_temperature", cpc_temperature)
+                predict_horizon = hp.get("predict_horizon", predict_horizon)
+                max_history_len = hp.get("max_history_len", max_history_len)
+                print(f"[BO CONFIG] Loaded tuned BO hyperparameters for '{mode.upper()}' from '{best_yaml_path}'")
+        except Exception as e:
+            print(f"[WARNING] Could not load BO hyperparameters from '{best_yaml_path}': {e}")
+
     # Restrict PyTorch thread count per worker process to 1 thread to avoid CPU thread contention
     torch.set_num_threads(1)
+
 
     # Set seeds
     np.random.seed(seed)
@@ -96,6 +129,7 @@ def train_single_run(
 
     history_buf: Optional[HistoryBuffer] = None
     vae_encoder: Optional[VAEContextEncoder] = None
+    cpc_encoder: Optional[CPCContextEncoder] = None
     encoder_optimizer: Optional[torch.optim.Optimizer] = None
 
     device = torch.device("cpu")
@@ -118,11 +152,22 @@ def train_single_run(
                 state_dim=raw_state_dim,
                 action_dim=action_dim,
                 latent_dim=latent_dim,
-                hidden_dim=64,
-                kl_weight=1e-3,
+                hidden_dim=hidden_dim,
+                kl_weight=kl_weight,
                 device=device,
             )
-            encoder_optimizer = torch.optim.Adam(vae_encoder.parameters(), lr=3e-4, eps=1e-5)
+            encoder_optimizer = torch.optim.Adam(vae_encoder.parameters(), lr=encoder_lr, eps=1e-5)
+        elif mode == "cpc":
+            cpc_encoder = CPCContextEncoder(
+                state_dim=raw_state_dim,
+                action_dim=action_dim,
+                latent_dim=latent_dim,
+                hidden_dim=hidden_dim,
+                predict_horizon=predict_horizon,
+                temperature=cpc_temperature,
+                device=device,
+            )
+            encoder_optimizer = torch.optim.Adam(cpc_encoder.parameters(), lr=encoder_lr, eps=1e-5)
 
     agent = BasePPOAgent(input_dim=input_dim, action_dim=action_dim, is_continuous=is_continuous, device=device)
 
@@ -136,6 +181,11 @@ def train_single_run(
         "total_steps": total_steps,
         "rollout_steps": rollout_steps,
         "latent_dim": latent_dim,
+        "hidden_dim": hidden_dim,
+        "encoder_lr": encoder_lr,
+        "kl_weight": kl_weight,
+        "cpc_temperature": cpc_temperature,
+        "predict_horizon": predict_horizon,
         "max_history_len": max_history_len,
         "is_continuous": is_continuous,
         "raw_state_dim": raw_state_dim,
@@ -153,10 +203,19 @@ def train_single_run(
     curr_obs = obs
     curr_hist_tensor = history_buf.get_tensor(pad_to_max=True) if history_buf else None
     curr_z_np = None
-    if mode == "vae" and vae_encoder is not None and curr_hist_tensor is not None:
+
+    def _extract_z(h_tensor: torch.Tensor) -> np.ndarray:
         with torch.no_grad():
-            mu_z, _ = vae_encoder.encode(curr_hist_tensor)
-            curr_z_np = mu_z.squeeze(0).cpu().numpy()
+            if mode == "vae" and vae_encoder is not None:
+                mu_z, _ = vae_encoder.encode(h_tensor)
+                return mu_z.squeeze(0).cpu().numpy()
+            elif mode == "cpc" and cpc_encoder is not None:
+                z_t = cpc_encoder.encode(h_tensor)
+                return z_t.squeeze(0).cpu().numpy()
+            return np.zeros((latent_dim,), dtype=np.float32)
+
+    if mode in ["vae", "cpc"] and curr_hist_tensor is not None:
+        curr_z_np = _extract_z(curr_hist_tensor)
 
     while global_step < total_steps:
         trajectory = []
@@ -182,12 +241,7 @@ def train_single_run(
                 next_raw_state = extract_raw_state(next_obs)
 
                 next_hist_tensor = history_buf.get_tensor(pad_to_max=True)
-                with torch.no_grad():
-                    if mode == "vae" and vae_encoder is not None:
-                        next_mu, _ = vae_encoder.encode(next_hist_tensor)
-                        next_z_np = next_mu.squeeze(0).cpu().numpy()
-                    else:
-                        next_z_np = curr_z_np
+                next_z_np = _extract_z(next_hist_tensor)
 
                 next_policy_input = np.concatenate([next_raw_state, next_z_np], axis=0)
                 trajectory.append((
@@ -216,17 +270,15 @@ def train_single_run(
                 if history_buf:
                     history_buf.reset()
                     curr_hist_tensor = history_buf.get_tensor(pad_to_max=True)
-                    if mode == "vae" and vae_encoder is not None:
-                        with torch.no_grad():
-                            mu_z, _ = vae_encoder.encode(curr_hist_tensor)
-                            curr_z_np = mu_z.squeeze(0).cpu().numpy()
+                    if mode in ["vae", "cpc"]:
+                        curr_z_np = _extract_z(curr_hist_tensor)
                 curr_obs, _ = env.reset()
             else:
                 curr_obs = next_obs
 
-        # Update representation encoder network (VAE)
-        vae_loss_val = 0.0
-        if mode == "vae" and vae_encoder is not None and encoder_optimizer is not None:
+        # Update representation encoder network (VAE / CPC)
+        repr_loss_val = 0.0
+        if mode in ["vae", "cpc"] and encoder_optimizer is not None:
             hist_batch = torch.cat([step[8] for step in trajectory], dim=0)
             state_batch = torch.tensor(np.array([step[9] for step in trajectory]), dtype=torch.float32)
 
@@ -240,11 +292,15 @@ def train_single_run(
             reward_batch = torch.tensor(np.array([step[4] for step in trajectory]), dtype=torch.float32).unsqueeze(-1)
 
             encoder_optimizer.zero_grad()
-            vae_loss_dict = vae_encoder.compute_loss(hist_batch, state_batch, action_batch, next_state_batch, reward_batch)
-            vae_loss = vae_loss_dict["loss"]
-            vae_loss.backward()
+            if mode == "vae" and vae_encoder is not None:
+                loss_dict = vae_encoder.compute_loss(hist_batch, state_batch, action_batch, next_state_batch, reward_batch)
+            elif mode == "cpc" and cpc_encoder is not None:
+                loss_dict = cpc_encoder.compute_loss(hist_batch, state_batch, action_batch, next_state_batch, reward_batch)
+            
+            repr_loss = loss_dict["loss"]
+            repr_loss.backward()
             encoder_optimizer.step()
-            vae_loss_val = vae_loss.item()
+            repr_loss_val = repr_loss.item()
 
         # Update PPO Agent
         ppo_traj = [(s, a, lp, e, r, tm, tr, ns, h) for (s, a, lp, e, r, tm, tr, ns, h, *_) in trajectory]
@@ -261,10 +317,14 @@ def train_single_run(
             "entropy_loss": e_loss,
         }
         if mode == "vae":
-            log_dict["vae_loss"] = vae_loss_val
+            log_dict["vae_loss"] = repr_loss_val
+        elif mode == "cpc":
+            log_dict["cpc_loss"] = repr_loss_val
+
         logger.log(log_dict)
 
-        loss_str = f"VAE Loss: {vae_loss_val:6.3f} | " if mode == "vae" else ""
+        loss_label = "VAE" if mode == "vae" else "CPC"
+        loss_str = f"{loss_label} Loss: {repr_loss_val:6.3f} | " if mode in ["vae", "cpc"] else ""
         print(
             f"Step {global_step:7d}/{total_steps:7d} | "
             f"Mean Return (last 10 eps): {mean_ret:6.1f} | "
@@ -278,6 +338,9 @@ def train_single_run(
 
     if vae_encoder:
         torch.save(vae_encoder.state_dict(), os.path.join(run_dir, "vae_encoder.pt"))
+    if cpc_encoder:
+        torch.save(cpc_encoder.state_dict(), os.path.join(run_dir, "cpc_encoder.pt"))
 
     print(f"[SUCCESS] Saved trained model checkpoint to '{run_dir}'")
     return run_dir
+

@@ -43,6 +43,7 @@ if PROJECT_ROOT not in sys.path:
 
 from src.pipeline.train import train_single_run
 from src.pipeline.evaluate import evaluate_run_directory, plot_evaluation_comparison_bar_chart
+from src.pipeline.bo_search import run_bayesian_optimization
 from src.utils.env_utils import resolve_path
 from scripts.plot_results import interactive_menu
 
@@ -88,8 +89,8 @@ def main():
         "--modes",
         type=str,
         nargs="+",
-        default=["context_free", "oracle", "vae"],
-        help="List of algorithms to train ('context_free', 'oracle', 'vae', 'all').",
+        default=["context_free", "oracle", "vae", "cpc"],
+        help="List of algorithms to train ('context_free', 'oracle', 'vae', 'cpc', 'all').",
     )
     train_parser.add_argument(
         "--env",
@@ -170,9 +171,45 @@ def main():
     )
 
     # -------------------------------------------------------------
-    # 4. RUN-ALL Command
+    # 4. OPTIMIZE Command (Bayesian Optimization)
     # -------------------------------------------------------------
-    runall_parser = subparsers.add_parser("run-all", help="Full end-to-end benchmark (Train -> Eval -> Plot).")
+    opt_parser = subparsers.add_parser("optimize", help="Run Bayesian Optimization (BO) hyperparameter search for VAE/CPC.")
+    opt_parser.add_argument(
+        "--modes",
+        type=str,
+        nargs="+",
+        default=["vae", "cpc"],
+        help="Representation algorithms to optimize ('vae', 'cpc').",
+    )
+    opt_parser.add_argument(
+        "--env",
+        type=str,
+        default="CARLPendulum",
+        help="Environment name.",
+    )
+    opt_parser.add_argument(
+        "--n_trials",
+        type=int,
+        default=10,
+        help="Number of BO trials per mode (default: 10).",
+    )
+    opt_parser.add_argument(
+        "--bo_steps",
+        type=int,
+        default=20480,
+        help="Training step budget per BO trial (default: 20480).",
+    )
+    opt_parser.add_argument(
+        "--output_dir",
+        type=str,
+        default="results",
+        help="Output directory for BO study results.",
+    )
+
+    # -------------------------------------------------------------
+    # 5. RUN-ALL Command
+    # -------------------------------------------------------------
+    runall_parser = subparsers.add_parser("run-all", help="Full end-to-end benchmark (BO -> Train -> Eval -> Plot).")
     runall_parser.add_argument(
         "--env",
         type=str,
@@ -183,7 +220,7 @@ def main():
         "--modes",
         type=str,
         nargs="+",
-        default=["context_free", "oracle", "vae"],
+        default=["context_free", "oracle", "vae", "cpc"],
         help="Algorithms to benchmark.",
     )
     runall_parser.add_argument(
@@ -217,7 +254,7 @@ def main():
     if args.command == "train":
         modes = args.modes
         if "all" in modes:
-            modes = ["context_free", "oracle", "vae"]
+            modes = ["context_free", "oracle", "vae", "cpc"]
 
         train_tasks = [
             (mode, args.env, args.total_steps, seed, args.num_contexts, args.exp_tag, args.output_dir)
@@ -261,11 +298,26 @@ def main():
     elif args.command == "plot":
         interactive_menu(resolve_path(args.dir))
 
+    elif args.command == "optimize":
+        modes = args.modes
+        if "all" in modes:
+            modes = ["vae", "cpc"]
+
+        for m in modes:
+            if m in ["vae", "cpc"]:
+                run_bayesian_optimization(
+                    mode=m,
+                    env_name=args.env,
+                    n_trials=args.n_trials,
+                    bo_steps=args.bo_steps,
+                    output_dir=args.output_dir,
+                )
+
     elif args.command == "run-all":
         output_dir = resolve_path(args.output_dir)
         modes = args.modes
         if "all" in modes:
-            modes = ["context_free", "oracle", "vae"]
+            modes = ["context_free", "oracle", "vae", "cpc"]
 
         train_tasks = [
             (mode, args.env, args.total_steps, seed, 100, "", output_dir)
@@ -303,3 +355,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
