@@ -13,6 +13,10 @@ from typing import Dict, Any, Tuple, Optional, List
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.neural_network import MLPRegressor
+from sklearn.preprocessing import StandardScaler
+from sklearn.compose import TransformedTargetRegressor
+from sklearn.pipeline import make_pipeline
 
 
 def probe_latent_context(
@@ -46,12 +50,17 @@ def probe_latent_context(
     # Compute Probing MSE
     probing_mse = float(np.mean((true_contexts - pred_contexts) ** 2))
 
-    # Compute R^2 determination score per context dimension
+    # Compute R^2 determination score per context dimension (filtering out zero-variance constants)
     ss_res = np.sum((true_contexts - pred_contexts) ** 2, axis=0)
     ss_tot = np.sum((true_contexts - np.mean(true_contexts, axis=0)) ** 2, axis=0)
-    r2_per_dim = 1.0 - (ss_res / (ss_tot + 1e-8))
+    
+    varying_mask = ss_tot > 1e-5
+    if np.any(varying_mask):
+        mean_r2 = float(np.mean(1.0 - (ss_res[varying_mask] / ss_tot[varying_mask])))
+    else:
+        mean_r2 = 1.0
 
-    mean_r2 = float(np.mean(r2_per_dim))
+    r2_per_dim = np.where(varying_mask, 1.0 - (ss_res / (ss_tot + 1e-8)), 1.0)
 
     results = {
         "mean_r2": mean_r2,
@@ -66,6 +75,80 @@ def probe_latent_context(
             results[f"r2_{key}"] = float(r2_per_dim[idx])
 
     return results
+
+
+def probe_latent_context_mlp(
+    latent_vectors: np.ndarray,
+    true_contexts: np.ndarray,
+    context_keys: Optional[List[str]] = None,
+    hidden_layer_sizes: Tuple[int, ...] = (64, 32),
+    max_iter: int = 500,
+    random_state: int = 42,
+) -> Dict[str, Any]:
+    """
+    Fits a non-linear Multi-Layer Perceptron (MLP) regression model mapping latent context vectors z_t
+    to true physical context parameters c_t to evaluate non-linearly encoded context information.
+
+    Args:
+        latent_vectors: Array of shape (num_samples, latent_dim).
+        true_contexts: Array of shape (num_samples, context_dim).
+        context_keys: Optional names of physical context parameters (e.g. ['gravity', 'mass']).
+        hidden_layer_sizes: Hidden layer dimensions for MLP probe (default: (64, 32)).
+        max_iter: Maximum training iterations (default: 500).
+        random_state: Random seed for reproducibility (default: 42).
+
+    Returns:
+        Dict[str, Any]: Dictionary containing overall mean MLP R^2 score, MLP MSE, and per-parameter R^2 scores.
+    """
+    num_samples, latent_dim = latent_vectors.shape
+    if true_contexts.ndim == 1:
+        true_contexts = true_contexts.reshape(-1, 1)
+    num_samples, context_dim = true_contexts.shape
+
+    mlp_model = TransformedTargetRegressor(
+        regressor=make_pipeline(
+            StandardScaler(),
+            MLPRegressor(
+                hidden_layer_sizes=hidden_layer_sizes,
+                max_iter=max_iter,
+                random_state=random_state,
+                alpha=0.01,
+            ),
+        ),
+        transformer=StandardScaler(),
+    )
+    mlp_model.fit(latent_vectors, true_contexts)
+    pred_contexts = mlp_model.predict(latent_vectors)
+    if pred_contexts.ndim == 1 and context_dim == 1:
+        pred_contexts = pred_contexts.reshape(-1, 1)
+
+    probing_mse = float(np.mean((true_contexts - pred_contexts) ** 2))
+    ss_res = np.sum((true_contexts - pred_contexts) ** 2, axis=0)
+    ss_tot = np.sum((true_contexts - np.mean(true_contexts, axis=0)) ** 2, axis=0)
+    
+    varying_mask = ss_tot > 1e-5
+    if np.any(varying_mask):
+        mean_r2 = float(np.mean(1.0 - (ss_res[varying_mask] / ss_tot[varying_mask])))
+    else:
+        mean_r2 = 1.0
+
+    r2_per_dim = np.where(varying_mask, 1.0 - (ss_res / (ss_tot + 1e-8)), 1.0)
+
+    results = {
+        "mean_r2": mean_r2,
+        "probing_mse": probing_mse,
+        "r2_per_dim": r2_per_dim.tolist(),
+        "pred_contexts": pred_contexts,
+    }
+
+    if context_keys and len(context_keys) == context_dim:
+        for idx, key in enumerate(context_keys):
+            results[f"r2_{key}"] = float(r2_per_dim[idx])
+
+    return results
+
+
+
 
 
 def visualize_latent_space_pca(
@@ -124,12 +207,13 @@ def visualize_probing_scatter(
     pred_contexts: np.ndarray,
     r2_score: float,
     mode: str = "CPC",
+    probe_type: str = "Linear",
     context_label: str = "Physical Parameter",
     output_path: str = "probing_scatter.png",
 ) -> str:
     """
-    Generates a True Context vs. Predicted Context Scatter Plot (Option 4 Probing Insight Plot).
-    Compares predicted context parameters from linear probing to ground truth with an ideal y = x line.
+    Generates a True Context vs. Predicted Context Scatter Plot.
+    Compares predicted context parameters from probing to ground truth with an ideal y = x line.
     """
     output_path = os.path.abspath(output_path)
 
@@ -150,8 +234,8 @@ def visualize_probing_scatter(
     max_val = max(float(np.max(y_true)), float(np.max(y_pred)))
     ax.plot([min_val, max_val], [min_val, max_val], "r--", linewidth=2.0, label="Ideal Recovery ($y = x$)")
 
-    ax.set_title(f"Linear Context Probing ({mode.upper()}) | R² = {r2_score:.3f}", fontsize=13, fontweight="bold", pad=12)
-    ax.set_xlabel(f"Linearly Predicted Context (z_t → ĉ)", fontsize=11, fontweight="bold")
+    ax.set_title(f"{probe_type} Context Probing ({mode.upper()}) | R² = {r2_score:.3f}", fontsize=13, fontweight="bold", pad=12)
+    ax.set_xlabel(f"{probe_type} Predicted Context (z_t → ĉ)", fontsize=11, fontweight="bold")
     ax.set_ylabel(f"True Context ({context_label})", fontsize=11, fontweight="bold")
     ax.legend(loc="upper left", fontsize=10)
 
@@ -160,5 +244,6 @@ def visualize_probing_scatter(
     plt.savefig(output_path, dpi=300)
     plt.close(fig)
 
-    print(f"  [SUCCESS] Probing Scatter Plot saved to '{output_path}'")
+    print(f"  [SUCCESS] {probe_type} Probing Scatter Plot saved to '{output_path}'")
     return output_path
+
