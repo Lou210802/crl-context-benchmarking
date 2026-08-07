@@ -1,0 +1,10 @@
+best_score: 26.59064913562563
+env_name: CARLCartPole
+hyperparameters:
+  cpc_temperature: 0.0524269386259731
+  encoder_lr: 0.00013066739238053285
+  hidden_dim: 32
+  latent_dim: 8
+  max_history_len: 10
+  predict_horizon: 5
+mode: cpc
