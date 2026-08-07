@@ -10,7 +10,7 @@ import os
 import sys
 import tempfile
 import yaml
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 import optuna
 
@@ -33,6 +33,7 @@ def run_bayesian_optimization(
     bo_steps: int = 20480,
     val_episodes: int = 10,
     val_context_seed: int = 8888,
+    vary_contexts: Optional[List[str]] = None,
     seed: int = 42,
     output_dir: str = "results",
 ) -> Dict[str, Any]:
@@ -46,6 +47,7 @@ def run_bayesian_optimization(
         bo_steps: Training step budget per optimization trial (default: 20480).
         val_episodes: Number of validation episodes per trial evaluation.
         val_context_seed: Context seed for validation set.
+        vary_contexts: Optional list of context parameters to vary during BO search.
         seed: Random seed for BO study sampler.
         output_dir: Base directory to save BO study log and best config.
 
@@ -87,6 +89,7 @@ def run_bayesian_optimization(
                 total_steps=bo_steps,
                 rollout_steps=1024,
                 seed=seed,
+                vary_contexts=vary_contexts,
                 latent_dim=latent_dim,
                 hidden_dim=hidden_dim,
                 encoder_lr=encoder_lr,

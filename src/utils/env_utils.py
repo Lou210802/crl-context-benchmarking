@@ -31,9 +31,21 @@ def resolve_path(path: str) -> str:
     return os.path.abspath(os.path.join(PROJECT_ROOT, path))
 
 
-def sample_contexts(env_name: str, num_contexts: int = 100, seed: int = 42) -> Optional[Dict[int, Dict[str, Any]]]:
+def sample_contexts(
+    env_name: str,
+    num_contexts: int = 100,
+    seed: int = 42,
+    vary_contexts: Optional[List[str]] = None,
+) -> Optional[Dict[int, Dict[str, Any]]]:
     """
     Samples a set of varying physical context instances for a CARL environment across episodes.
+
+    Args:
+        env_name: Name of CARL environment.
+        num_contexts: Number of context instances to sample.
+        seed: Random seed for reproducibility.
+        vary_contexts: Optional list of context parameter names to vary (e.g., ['gravity'], ['g'], ['g', 'l']).
+                        If None or empty, all available context parameters for the environment are varied.
     """
     try:
         with warnings.catch_warnings(record=False):
@@ -43,22 +55,33 @@ def sample_contexts(env_name: str, num_contexts: int = 100, seed: int = 42) -> O
                 env_cls = getattr(carl_envs, env_name)
                 default_ctx = env_cls.get_default_context()
                 rng = np.random.RandomState(seed)
+
+                vary_set = set(k.lower() for k in vary_contexts) if vary_contexts else None
+
+                def should_vary(key: str, aliases: List[str]) -> bool:
+                    if vary_set is None:
+                        return True
+                    for name in [key] + aliases:
+                        if name.lower() in vary_set:
+                            return True
+                    return False
+
                 contexts = {}
                 for i in range(num_contexts):
                     ctx = default_ctx.copy()
-                    if "gravity" in ctx:
+                    if "gravity" in ctx and should_vary("gravity", ["g"]):
                         ctx["gravity"] = float(rng.uniform(3.0, 20.0))
-                    if "g" in ctx:
+                    if "g" in ctx and should_vary("g", ["gravity"]):
                         ctx["g"] = float(rng.uniform(3.0, 20.0))
-                    if "masspole" in ctx:
+                    if "masspole" in ctx and should_vary("masspole", ["m", "mass"]):
                         ctx["masspole"] = float(rng.uniform(0.05, 0.5))
-                    if "length" in ctx:
+                    if "length" in ctx and should_vary("length", ["l"]):
                         ctx["length"] = float(rng.uniform(0.2, 1.5))
-                    if "l" in ctx:
+                    if "l" in ctx and should_vary("l", ["length"]):
                         ctx["l"] = float(rng.uniform(0.5, 2.0))
-                    if "masscart" in ctx:
+                    if "masscart" in ctx and should_vary("masscart", ["m", "mass"]):
                         ctx["masscart"] = float(rng.uniform(0.5, 2.0))
-                    if "m" in ctx:
+                    if "m" in ctx and should_vary("m", ["mass"]):
                         ctx["m"] = float(rng.uniform(0.5, 2.0))
                     contexts[i] = ctx
                 return contexts
@@ -72,6 +95,7 @@ def make_env(
     seed: Optional[int] = None,
     num_contexts: int = 100,
     context_seed: int = 42,
+    vary_contexts: Optional[List[str]] = None,
 ) -> gym.Env:
     """
     Instantiates either a standard Gymnasium environment or a CARL benchmark environment.
@@ -82,6 +106,7 @@ def make_env(
         seed: Optional action space random seed.
         num_contexts: Number of varying context instances to sample (0 for default static context).
         context_seed: Seed for sampling context variations (42 for training, 9999 for held-out testing).
+        vary_contexts: Optional list of context parameter names to vary (e.g. ['gravity'], ['g'], ['g', 'l']).
 
     Returns:
         gym.Env: Instantiated Gymnasium or CARL environment instance.
@@ -94,7 +119,12 @@ def make_env(
             if hasattr(carl_envs, env_name):
                 env_cls = getattr(carl_envs, env_name)
                 if num_contexts > 0:
-                    contexts = sample_contexts(env_name, num_contexts=num_contexts, seed=context_seed)
+                    contexts = sample_contexts(
+                        env_name,
+                        num_contexts=num_contexts,
+                        seed=context_seed,
+                        vary_contexts=vary_contexts,
+                    )
                     env = env_cls(contexts=contexts)
                 else:
                     env = env_cls()

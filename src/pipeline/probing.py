@@ -13,10 +13,6 @@ from typing import Dict, Any, Tuple, Optional, List
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.neural_network import MLPRegressor
-from sklearn.preprocessing import StandardScaler
-from sklearn.compose import TransformedTargetRegressor
-from sklearn.pipeline import make_pipeline
 
 
 def probe_latent_context(
@@ -68,77 +64,6 @@ def probe_latent_context(
         "r2_per_dim": r2_per_dim.tolist(),
         "pred_contexts": pred_contexts,
         "weights": weights,
-    }
-
-    if context_keys and len(context_keys) == context_dim:
-        for idx, key in enumerate(context_keys):
-            results[f"r2_{key}"] = float(r2_per_dim[idx])
-
-    return results
-
-
-def probe_latent_context_mlp(
-    latent_vectors: np.ndarray,
-    true_contexts: np.ndarray,
-    context_keys: Optional[List[str]] = None,
-    hidden_layer_sizes: Tuple[int, ...] = (64, 32),
-    max_iter: int = 500,
-    random_state: int = 42,
-) -> Dict[str, Any]:
-    """
-    Fits a non-linear Multi-Layer Perceptron (MLP) regression model mapping latent context vectors z_t
-    to true physical context parameters c_t to evaluate non-linearly encoded context information.
-
-    Args:
-        latent_vectors: Array of shape (num_samples, latent_dim).
-        true_contexts: Array of shape (num_samples, context_dim).
-        context_keys: Optional names of physical context parameters (e.g. ['gravity', 'mass']).
-        hidden_layer_sizes: Hidden layer dimensions for MLP probe (default: (64, 32)).
-        max_iter: Maximum training iterations (default: 500).
-        random_state: Random seed for reproducibility (default: 42).
-
-    Returns:
-        Dict[str, Any]: Dictionary containing overall mean MLP R^2 score, MLP MSE, and per-parameter R^2 scores.
-    """
-    num_samples, latent_dim = latent_vectors.shape
-    if true_contexts.ndim == 1:
-        true_contexts = true_contexts.reshape(-1, 1)
-    num_samples, context_dim = true_contexts.shape
-
-    mlp_model = TransformedTargetRegressor(
-        regressor=make_pipeline(
-            StandardScaler(),
-            MLPRegressor(
-                hidden_layer_sizes=hidden_layer_sizes,
-                max_iter=max_iter,
-                random_state=random_state,
-                alpha=0.01,
-            ),
-        ),
-        transformer=StandardScaler(),
-    )
-    mlp_model.fit(latent_vectors, true_contexts)
-    pred_contexts = mlp_model.predict(latent_vectors)
-    if pred_contexts.ndim == 1 and context_dim == 1:
-        pred_contexts = pred_contexts.reshape(-1, 1)
-
-    probing_mse = float(np.mean((true_contexts - pred_contexts) ** 2))
-    ss_res = np.sum((true_contexts - pred_contexts) ** 2, axis=0)
-    ss_tot = np.sum((true_contexts - np.mean(true_contexts, axis=0)) ** 2, axis=0)
-    
-    varying_mask = ss_tot > 1e-5
-    if np.any(varying_mask):
-        mean_r2 = float(np.mean(1.0 - (ss_res[varying_mask] / ss_tot[varying_mask])))
-    else:
-        mean_r2 = 1.0
-
-    r2_per_dim = np.where(varying_mask, 1.0 - (ss_res / (ss_tot + 1e-8)), 1.0)
-
-    results = {
-        "mean_r2": mean_r2,
-        "probing_mse": probing_mse,
-        "r2_per_dim": r2_per_dim.tolist(),
-        "pred_contexts": pred_contexts,
     }
 
     if context_keys and len(context_keys) == context_dim:

@@ -21,7 +21,7 @@ import glob
 import os
 import sys
 import warnings
-from typing import List, Tuple, Any
+from typing import List, Tuple, Any, Optional
 import numpy as np
 
 # Restrict OpenMP, MKL, OpenBLAS, etc. to 1 thread per worker to prevent CPU thread thrashing across workers
@@ -62,14 +62,15 @@ def _init_worker():
         pass
 
 
-def _worker_train_task(task_args: Tuple[str, str, int, int, int, str, str]) -> str:
-    mode, env_name, total_steps, seed, num_contexts, exp_tag, output_dir = task_args
+def _worker_train_task(task_args: Tuple[str, str, int, int, int, Optional[List[str]], str, str]) -> str:
+    mode, env_name, total_steps, seed, num_contexts, vary_contexts, exp_tag, output_dir = task_args
     return train_single_run(
         mode=mode,
         env_name=env_name,
         total_steps=total_steps,
         seed=seed,
         num_contexts=num_contexts,
+        vary_contexts=vary_contexts,
         exp_tag=exp_tag,
         output_dir=output_dir,
     )
@@ -118,6 +119,13 @@ def main():
         help="Number of training context instances (default: 100).",
     )
     train_parser.add_argument(
+        "--vary_contexts",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Specific physical context parameters to vary (e.g., 'gravity' or 'g' 'l'). Default: all.",
+    )
+    train_parser.add_argument(
         "--num_workers",
         type=int,
         default=4,
@@ -157,6 +165,13 @@ def main():
         type=int,
         default=9999,
         help="Seed for sampling held-out evaluation contexts (default: 9999).",
+    )
+    eval_parser.add_argument(
+        "--vary_contexts",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Specific physical context parameters to vary during evaluation (e.g., 'gravity' or 'g' 'l'). Default: uses training config.",
     )
 
     # -------------------------------------------------------------
@@ -200,6 +215,13 @@ def main():
         help="Training step budget per BO trial (default: 20480).",
     )
     opt_parser.add_argument(
+        "--vary_contexts",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Specific physical context parameters to vary during BO search.",
+    )
+    opt_parser.add_argument(
         "--output_dir",
         type=str,
         default="results",
@@ -231,6 +253,13 @@ def main():
         help="Model seeds.",
     )
     runall_parser.add_argument(
+        "--vary_contexts",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Specific physical context parameters to vary (e.g., 'gravity' or 'g' 'l'). Default: all.",
+    )
+    runall_parser.add_argument(
         "--total_steps",
         type=int,
         default=51200,
@@ -257,7 +286,7 @@ def main():
             modes = ["context_free", "oracle", "vae", "cpc"]
 
         train_tasks = [
-            (mode, args.env, args.total_steps, seed, args.num_contexts, args.exp_tag, args.output_dir)
+            (mode, args.env, args.total_steps, seed, args.num_contexts, args.vary_contexts, args.exp_tag, args.output_dir)
             for mode in modes
             for seed in args.seeds
         ]
@@ -286,6 +315,7 @@ def main():
                 run_dir=r_dir,
                 eval_episodes=args.eval_episodes,
                 eval_context_seed=args.eval_context_seed,
+                vary_contexts=args.vary_contexts,
             )
             eval_summaries.append(res)
 
@@ -310,6 +340,7 @@ def main():
                     env_name=args.env,
                     n_trials=args.n_trials,
                     bo_steps=args.bo_steps,
+                    vary_contexts=args.vary_contexts,
                     output_dir=args.output_dir,
                 )
 
@@ -320,7 +351,7 @@ def main():
             modes = ["context_free", "oracle", "vae", "cpc"]
 
         train_tasks = [
-            (mode, args.env, args.total_steps, seed, 100, "", output_dir)
+            (mode, args.env, args.total_steps, seed, 100, args.vary_contexts, "", output_dir)
             for mode in modes
             for seed in args.seeds
         ]
@@ -337,7 +368,10 @@ def main():
         print("=" * 65)
         eval_summaries = []
         for r_dir in trained_run_dirs:
-            res = evaluate_run_directory(r_dir)
+            res = evaluate_run_directory(
+                run_dir=r_dir,
+                vary_contexts=args.vary_contexts,
+            )
             eval_summaries.append(res)
 
         if eval_summaries:

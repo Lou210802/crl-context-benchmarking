@@ -25,7 +25,6 @@ from src.models.vae_encoder import VAEContextEncoder
 from src.models.cpc_encoder import CPCContextEncoder
 from src.pipeline.probing import (
     probe_latent_context,
-    probe_latent_context_mlp,
     visualize_latent_space_pca,
     visualize_probing_scatter,
 )
@@ -43,6 +42,7 @@ def evaluate_run_directory(
     eval_episodes: int = 20,
     eval_context_seed: int = 9999,
     num_eval_contexts: int = 20,
+    vary_contexts: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Evaluates a trained model checkpoint on held-out physical context instances.
@@ -53,6 +53,7 @@ def evaluate_run_directory(
         eval_episodes: Number of evaluation episodes to run.
         eval_context_seed: Seed for sampling held-out evaluation contexts (default: 9999).
         num_eval_contexts: Number of unseen context variations (default: 20).
+        vary_contexts: Specific physical context parameters to vary during evaluation (e.g. ['gravity']). If None, uses config value.
 
     Returns:
         Dict[str, Any]: Dictionary containing evaluation metrics (mean return, probing R^2 scores, etc.).
@@ -77,6 +78,8 @@ def evaluate_run_directory(
     predict_horizon = config.get("predict_horizon", 3)
     cpc_temperature = config.get("cpc_temperature", 0.1)
     max_history_len = config.get("max_history_len", 25)
+    if vary_contexts is None:
+        vary_contexts = config.get("vary_contexts", None)
 
     device = torch.device("cpu")
 
@@ -130,6 +133,7 @@ def evaluate_run_directory(
         env_name=env_name,
         num_contexts=num_eval_contexts,
         context_seed=eval_context_seed,
+        vary_contexts=vary_contexts,
     )
 
     episode_returns: List[float] = []
@@ -208,20 +212,15 @@ def evaluate_run_directory(
         "eval_mean_length": float(np.mean(episode_lengths)),
     }
 
-    # 4. Perform Linear Context Probing & MLP Context Probing & Visualizations
+    # 4. Perform Linear Context Probing & Visualizations
     if collected_z_vectors and collected_true_contexts:
         z_arr = np.array(collected_z_vectors)
         c_arr = np.array(collected_true_contexts)
 
-        # 4a. Linear Probing (Original)
+        # Linear Context Probing
         probing_results = probe_latent_context(z_arr, c_arr, context_keys=context_keys)
         eval_results["probing_r2"] = probing_results["mean_r2"]
         eval_results["probing_mse"] = probing_results["probing_mse"]
-
-        # 4b. MLP Probing (Non-linear)
-        mlp_probing_results = probe_latent_context_mlp(z_arr, c_arr, context_keys=context_keys)
-        eval_results["probing_mlp_r2"] = mlp_probing_results["mean_r2"]
-        eval_results["probing_mlp_mse"] = mlp_probing_results["probing_mse"]
 
         # PCA Visualization
         pca_plot_path = os.path.join(run_dir, "latent_space_pca.png")
@@ -235,7 +234,7 @@ def evaluate_run_directory(
             output_path=pca_plot_path,
         )
 
-        # Probing Prediction Scatter Plots (Linear & MLP)
+        # Probing Prediction Scatter Plot (Linear)
         prob_plot_path = os.path.join(run_dir, "probing_scatter.png")
         visualize_probing_scatter(
             true_contexts=c_arr,
@@ -247,23 +246,12 @@ def evaluate_run_directory(
             output_path=prob_plot_path,
         )
 
-        prob_mlp_plot_path = os.path.join(run_dir, "probing_scatter_mlp.png")
-        visualize_probing_scatter(
-            true_contexts=c_arr,
-            pred_contexts=mlp_probing_results["pred_contexts"],
-            r2_score=mlp_probing_results["mean_r2"],
-            mode=mode,
-            probe_type="MLP",
-            context_label=color_label,
-            output_path=prob_mlp_plot_path,
-        )
-
     # Save evaluation summary to YAML
     eval_yaml_path = os.path.join(run_dir, "evaluation_summary.yaml")
     with open(eval_yaml_path, "w") as f:
         yaml.dump(eval_results, f, default_flow_style=False)
 
-    prob_str = f" | Linear R^2: {eval_results['probing_r2']:5.3f} | MLP R^2: {eval_results['probing_mlp_r2']:5.3f}" if "probing_r2" in eval_results else ""
+    prob_str = f" | Linear R^2: {eval_results['probing_r2']:5.3f}" if "probing_r2" in eval_results else ""
     print(
         f"[EVAL RESULT] {mode.upper():12s} | "
         f"Mean Return (Unseen Contexts): {eval_results['eval_mean_return']:6.1f} ± {eval_results['eval_std_return']:4.1f}"
@@ -292,7 +280,6 @@ def plot_evaluation_comparison_bar_chart(
     # Group mean and std returns by mode
     grouped_data: Dict[str, List[float]] = {}
     r2_data: Dict[str, List[float]] = {}
-    mlp_r2_data: Dict[str, List[float]] = {}
 
     for res in eval_summaries:
         m = res["mode"].lower()
@@ -303,10 +290,6 @@ def plot_evaluation_comparison_bar_chart(
             if m not in r2_data:
                 r2_data[m] = []
             r2_data[m].append(res["probing_r2"])
-        if "probing_mlp_r2" in res:
-            if m not in mlp_r2_data:
-                mlp_r2_data[m] = []
-            mlp_r2_data[m].append(res["probing_mlp_r2"])
 
     modes = list(grouped_data.keys())
     means = [np.mean(grouped_data[m]) for m in modes]
@@ -358,37 +341,31 @@ def plot_evaluation_comparison_bar_chart(
     plt.savefig(output_path, dpi=300)
     plt.close(fig)
 
-    # 2. Also generate Probing R^2 Comparison Bar Chart (Linear vs MLP) if representation modes are present
+    # 2. Also generate Linear Probing R^2 Comparison Bar Chart if representation modes are present
     if r2_data:
         r2_modes = list(r2_data.keys())
         r2_lin_means = [np.mean(r2_data[m]) for m in r2_modes]
         r2_lin_stds = [np.std(r2_data[m]) if len(r2_data[m]) > 1 else 0.0 for m in r2_modes]
-        
-        r2_mlp_means = [np.mean(mlp_r2_data[m]) if m in mlp_r2_data else 0.0 for m in r2_modes]
-        r2_mlp_stds = [np.std(mlp_r2_data[m]) if m in mlp_r2_data and len(mlp_r2_data[m]) > 1 else 0.0 for m in r2_modes]
 
         r2_output_path = os.path.join(os.path.dirname(output_path), "probing_r2_comparison.png")
         fig2, ax2 = plt.subplots(figsize=(8, 5), dpi=300)
 
-        x = np.arange(len(r2_modes))
-        width = 0.35
+        bars2 = ax2.bar(
+            [m.upper() for m in r2_modes],
+            r2_lin_means,
+            yerr=r2_lin_stds,
+            capsize=5,
+            color="#1f77b4",
+            edgecolor="black",
+            alpha=0.85,
+        )
 
-        rects1 = ax2.bar(x - width/2, r2_lin_means, width, yerr=r2_lin_stds, label="Linear Probing", capsize=5, color="#1f77b4", edgecolor="black", alpha=0.85)
-        rects2 = ax2.bar(x + width/2, r2_mlp_means, width, yerr=r2_mlp_stds, label="MLP Probing (Non-linear)", capsize=5, color="#2ca02c", edgecolor="black", alpha=0.85)
-
-        ax2.set_title("Context Probing R² Score Comparison (Linear vs. MLP)", fontsize=13, fontweight="bold", pad=12)
-        ax2.set_ylabel("Probing R² Score (Higher is Better)", fontsize=11, fontweight="bold")
+        ax2.set_title("Linear Context Probing R² Score Comparison", fontsize=13, fontweight="bold", pad=12)
+        ax2.set_ylabel("Linear Probing R² Score (Higher is Better)", fontsize=11, fontweight="bold")
         ax2.set_xlabel("Representation Algorithm", fontsize=11, fontweight="bold")
-        ax2.set_xticks(x)
-        ax2.set_xticklabels([m.upper() for m in r2_modes], fontweight="bold")
         ax2.set_ylim(0.0, 1.05)
-        ax2.legend(loc="upper right", fontsize=10)
 
-        for rect in rects1:
-            height = rect.get_height()
-            ax2.annotate(f"{height:.3f}", xy=(rect.get_x() + rect.get_width() / 2, height + 0.02), xytext=(0, 2), textcoords="offset points", ha="center", va="bottom", fontsize=9, fontweight="bold")
-
-        for rect in rects2:
+        for rect in bars2:
             height = rect.get_height()
             ax2.annotate(f"{height:.3f}", xy=(rect.get_x() + rect.get_width() / 2, height + 0.02), xytext=(0, 2), textcoords="offset points", ha="center", va="bottom", fontsize=9, fontweight="bold")
 
@@ -399,4 +376,3 @@ def plot_evaluation_comparison_bar_chart(
         print(f"[SUCCESS] Probing R^2 comparison plot saved to '{r2_output_path}'")
 
     return output_path
-

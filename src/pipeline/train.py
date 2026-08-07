@@ -46,6 +46,7 @@ def train_single_run(
     seed: int = 0,
     num_contexts: int = 100,
     train_context_seed: int = 42,
+    vary_contexts: Optional[List[str]] = None,
     latent_dim: int = 8,
     hidden_dim: int = 64,
     encoder_lr: float = 3e-4,
@@ -67,6 +68,7 @@ def train_single_run(
         seed: Model random seed.
         num_contexts: Number of training context instances (default: 100).
         train_context_seed: Context sampling seed for training set (default: 42).
+        vary_contexts: Optional list of physical context parameters to vary (e.g. ['gravity'], ['g', 'l']).
         latent_dim: Latent context dimension z_t (default: 8).
         hidden_dim: Encoder hidden dimension (default: 64).
         encoder_lr: Representation encoder learning rate (default: 3e-4).
@@ -110,7 +112,13 @@ def train_single_run(
     torch.manual_seed(seed)
 
     # Make training environment
-    env = make_env(env_name, seed=seed, num_contexts=num_contexts, context_seed=train_context_seed)
+    env = make_env(
+        env_name,
+        seed=seed,
+        num_contexts=num_contexts,
+        context_seed=train_context_seed,
+        vary_contexts=vary_contexts,
+    )
     is_continuous = isinstance(env.action_space, gym.spaces.Box)
     action_dim = env.action_space.shape[0] if is_continuous else env.action_space.n
 
@@ -178,6 +186,7 @@ def train_single_run(
         "seed": seed,
         "train_context_seed": train_context_seed,
         "num_contexts": num_contexts,
+        "vary_contexts": vary_contexts,
         "total_steps": total_steps,
         "rollout_steps": rollout_steps,
         "latent_dim": latent_dim,
