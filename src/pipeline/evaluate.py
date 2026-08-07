@@ -23,7 +23,11 @@ if PROJECT_ROOT not in sys.path:
 from src.agents.base_ppo import BasePPOAgent
 from src.models.vae_encoder import VAEContextEncoder
 from src.models.cpc_encoder import CPCContextEncoder
-from src.pipeline.probing import probe_latent_context, visualize_latent_space_pca
+from src.pipeline.probing import (
+    probe_latent_context,
+    visualize_latent_space_pca,
+    visualize_probing_scatter,
+)
 from src.utils.env_utils import (
     make_env,
     extract_input,
@@ -177,7 +181,6 @@ def evaluate_run_directory(
                 collected_z_vectors.append(z_np)
                 collected_true_contexts.append(true_c)
 
-
             action, _, _, _ = agent.predict(policy_input)
             next_obs, reward, term, trunc, _ = eval_env.step(action)
             done = term or trunc
@@ -204,7 +207,7 @@ def evaluate_run_directory(
         "eval_mean_length": float(np.mean(episode_lengths)),
     }
 
-    # 4. Perform Linear Context Probing & PCA Visualization for representation encoders
+    # 4. Perform Linear Context Probing & Visualizations for representation encoders
     if collected_z_vectors and collected_true_contexts:
         z_arr = np.array(collected_z_vectors)
         c_arr = np.array(collected_true_contexts)
@@ -223,6 +226,17 @@ def evaluate_run_directory(
             color_label=color_label,
             title=f"Latent Context Space ({mode.upper()}) PCA on {env_name}",
             output_path=pca_plot_path,
+        )
+
+        # Probing Prediction Scatter Plot (Option 4 Option)
+        prob_plot_path = os.path.join(run_dir, "probing_scatter.png")
+        visualize_probing_scatter(
+            true_contexts=c_arr,
+            pred_contexts=probing_results["pred_contexts"],
+            r2_score=probing_results["mean_r2"],
+            mode=mode,
+            context_label=color_label,
+            output_path=prob_plot_path,
         )
 
     # Save evaluation summary to YAML
@@ -244,7 +258,7 @@ def plot_evaluation_comparison_bar_chart(
     output_path: str = "results/eval_returns_comparison.png",
 ) -> str:
     """
-    Generates a comparative bar chart plot comparing held-out evaluation performance across algorithms.
+    Generates comparative bar chart plots comparing held-out evaluation returns AND linear probing R^2 scores across algorithms.
 
     Args:
         eval_summaries: List of evaluation summary result dictionaries.
@@ -257,11 +271,17 @@ def plot_evaluation_comparison_bar_chart(
 
     # Group mean and std returns by mode
     grouped_data: Dict[str, List[float]] = {}
+    r2_data: Dict[str, List[float]] = {}
+
     for res in eval_summaries:
         m = res["mode"].lower()
         if m not in grouped_data:
             grouped_data[m] = []
         grouped_data[m].append(res["eval_mean_return"])
+        if "probing_r2" in res:
+            if m not in r2_data:
+                r2_data[m] = []
+            r2_data[m].append(res["probing_r2"])
 
     modes = list(grouped_data.keys())
     means = [np.mean(grouped_data[m]) for m in modes]
@@ -313,5 +333,47 @@ def plot_evaluation_comparison_bar_chart(
     plt.savefig(output_path, dpi=300)
     plt.close(fig)
 
-    print(f"\n[SUCCESS] Evaluation comparison plot saved to '{output_path}'")
+    # 2. Also generate Probing R^2 Comparison Bar Chart if representation modes are present
+    if r2_data:
+        r2_modes = list(r2_data.keys())
+        r2_means = [np.mean(r2_data[m]) for m in r2_modes]
+        r2_stds = [np.std(r2_data[m]) if len(r2_data[m]) > 1 else 0.0 for m in r2_modes]
+
+        r2_output_path = os.path.join(os.path.dirname(output_path), "probing_r2_comparison.png")
+        fig2, ax2 = plt.subplots(figsize=(7, 5), dpi=300)
+
+        bars2 = ax2.bar(
+            [m.upper() for m in r2_modes],
+            r2_means,
+            yerr=r2_stds,
+            capsize=6,
+            color=sns.color_palette("muted", len(r2_modes)),
+            edgecolor="black",
+            linewidth=1.2,
+            alpha=0.85,
+        )
+
+        ax2.set_title("Linear Context Probing R² Score Comparison", fontsize=13, fontweight="bold", pad=12)
+        ax2.set_ylabel("Linear Probing R² Score (Higher is Better)", fontsize=11, fontweight="bold")
+        ax2.set_xlabel("Representation Algorithm", fontsize=11, fontweight="bold")
+        ax2.set_ylim(0.0, 1.05)
+
+        for bar, m_val, s_val in zip(bars2, r2_means, r2_stds):
+            ax2.annotate(
+                f"R² = {m_val:.3f}",
+                xy=(bar.get_x() + bar.get_width() / 2, m_val + s_val + 0.02),
+                xytext=(0, 2),
+                textcoords="offset points",
+                ha="center",
+                va="bottom",
+                fontsize=10,
+                fontweight="bold",
+            )
+
+        sns.despine(ax=ax2, top=True, right=True)
+        plt.tight_layout()
+        plt.savefig(r2_output_path, dpi=300)
+        plt.close(fig2)
+        print(f"[SUCCESS] Linear Probing R^2 comparison plot saved to '{r2_output_path}'")
+
     return output_path

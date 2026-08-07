@@ -5,6 +5,7 @@ This module provides tools to scientifically evaluate whether representation enc
 have successfully captured and disentangled the environment's true physical context parameters:
   1. Linear Context Probing: Fits linear regression W * z_t + b -> c_true to measure R^2 score.
   2. Latent PCA Scatter Visualization: Projects 8D latent context space z_t to 2D PCA colored by physical context.
+  3. Probing Prediction Scatter Plot: Plots True Context vs. Linearly Predicted Context (Option 4 insight plot).
 """
 
 import os
@@ -56,6 +57,8 @@ def probe_latent_context(
         "mean_r2": mean_r2,
         "probing_mse": probing_mse,
         "r2_per_dim": r2_per_dim.tolist(),
+        "pred_contexts": pred_contexts,
+        "weights": weights,
     }
 
     if context_keys and len(context_keys) == context_dim:
@@ -75,16 +78,6 @@ def visualize_latent_space_pca(
     """
     Projects 8D latent context vectors z_t down to 2D using SVD-based PCA and generates a scatter plot
     colored by ground-truth physical context values.
-
-    Args:
-        latent_vectors: Array of shape (num_samples, latent_dim).
-        color_values: Continuous values used to color scatter points (e.g. gravity or mass).
-        color_label: Label for colorbar legend.
-        title: Title for the generated plot.
-        output_path: Output file path for the plot image.
-
-    Returns:
-        str: Absolute output file path of the saved scatter plot image.
     """
     output_path = os.path.abspath(output_path)
 
@@ -123,4 +116,49 @@ def visualize_latent_space_pca(
     plt.close(fig)
 
     print(f"  [SUCCESS] Latent PCA Visualization saved to '{output_path}'")
+    return output_path
+
+
+def visualize_probing_scatter(
+    true_contexts: np.ndarray,
+    pred_contexts: np.ndarray,
+    r2_score: float,
+    mode: str = "CPC",
+    context_label: str = "Physical Parameter",
+    output_path: str = "probing_scatter.png",
+) -> str:
+    """
+    Generates a True Context vs. Predicted Context Scatter Plot (Option 4 Probing Insight Plot).
+    Compares predicted context parameters from linear probing to ground truth with an ideal y = x line.
+    """
+    output_path = os.path.abspath(output_path)
+
+    if true_contexts.ndim > 1:
+        y_true = true_contexts[:, 0]
+        y_pred = pred_contexts[:, 0]
+    else:
+        y_true = true_contexts
+        y_pred = pred_contexts
+
+    sns.set_theme(style="whitegrid", palette="muted")
+    fig, ax = plt.subplots(figsize=(7, 6), dpi=300)
+
+    ax.scatter(y_pred, y_true, alpha=0.7, color="#1f77b4" if mode.lower()=="cpc" else "#e377c2", edgecolor="k", linewidth=0.5, s=40)
+
+    # Plot ideal identity diagonal y = x
+    min_val = min(float(np.min(y_true)), float(np.min(y_pred)))
+    max_val = max(float(np.max(y_true)), float(np.max(y_pred)))
+    ax.plot([min_val, max_val], [min_val, max_val], "r--", linewidth=2.0, label="Ideal Recovery ($y = x$)")
+
+    ax.set_title(f"Linear Context Probing ({mode.upper()}) | R² = {r2_score:.3f}", fontsize=13, fontweight="bold", pad=12)
+    ax.set_xlabel(f"Linearly Predicted Context (z_t → ĉ)", fontsize=11, fontweight="bold")
+    ax.set_ylabel(f"True Context ({context_label})", fontsize=11, fontweight="bold")
+    ax.legend(loc="upper left", fontsize=10)
+
+    sns.despine(ax=ax, top=True, right=True)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300)
+    plt.close(fig)
+
+    print(f"  [SUCCESS] Probing Scatter Plot saved to '{output_path}'")
     return output_path
