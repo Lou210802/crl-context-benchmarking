@@ -1,14 +1,17 @@
 """
-Interactive Plotting CLI script for Contextual Reinforcement Learning Results.
+Plotting CLI script for Contextual Reinforcement Learning Results.
 
-This script provides an interactive terminal menu with arrow-key navigation,
-spacebar checkbox toggling [x], and multi-metric plot generation.
+Generates a comparison plot for every metric found across every discovered run --
+no manual run/metric selection needed.
 
 Usage Examples:
-    # Launch interactive terminal selection window:
+    # Generate every metric-comparison plot for all runs found under results/:
     python scripts/plot_results.py
 
-    # Non-interactive CLI mode:
+    # Same, but for a specific results directory:
+    python scripts/plot_results.py --dir results/100k_steps
+
+    # Single-file/single-metric CLI mode:
     python scripts/plot_results.py --files scripts/results/*/oracle_seed0_results.csv --metric_col mean_return
 """
 
@@ -16,9 +19,7 @@ import argparse
 import glob
 import os
 import sys
-import termios
-import tty
-from typing import List, Dict, Any, Optional
+from typing import List
 import pandas as pd
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -49,7 +50,7 @@ def discover_csv_files(results_dir: str) -> List[str]:
 
 def get_available_metrics(csv_files: List[str]) -> List[str]:
     """
-    Extracts common numeric metric column names from selected CSV files.
+    Extracts common numeric metric column names from the given CSV files.
     """
     metrics_set = set()
     for f in csv_files:
@@ -67,95 +68,14 @@ def get_available_metrics(csv_files: List[str]) -> List[str]:
     return ordered_metrics + remaining
 
 
-def select_interactive(title: str, options: List[str], multi_select: bool = True) -> List[int]:
+def generate_all_plots(results_dir: str) -> None:
     """
-    Renders an interactive terminal checklist menu using ANSI escape sequences.
-    User navigates with Up/Down arrow keys, toggles with Spacebar, and confirms with Enter.
-
-    Args:
-        title: Header title for the selection prompt.
-        options: List of string labels to display.
-        multi_select: Whether multiple items can be checked with Spacebar.
-
-    Returns:
-        List[int]: List of selected zero-based option indices.
-    """
-    if not options:
-        return []
-
-    if not sys.stdin.isatty():
-        return list(range(len(options)))
-
-    selected = [True] * len(options) if multi_select else [False] * len(options)
-    if not multi_select and options:
-        selected[0] = True
-
-    cursor = 0
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-
-    def draw_menu(is_initial: bool = False):
-        if not is_initial:
-            lines_to_clear = len(options) + 2
-            sys.stdout.write(f"\033[{lines_to_clear}F")
-
-        sys.stdout.write("\033[J")  # Clear from cursor down
-        sys.stdout.write(f"\033[1;36m{title}\033[0m\r\n")
-        sys.stdout.write("\033[90m(Nav: UP/DOWN arrows | Toggle: SPACE [x] | All: 'a' | Confirm: ENTER)\033[0m\r\n")
-
-        for idx, option in enumerate(options):
-            is_cursor = (idx == cursor)
-            prefix = "\033[1;33m> \033[0m" if is_cursor else "  "
-            chk = "\033[1;32m[x]\033[0m" if selected[idx] else "\033[90m[ ]\033[0m"
-            label = f"\033[1;37m{option}\033[0m" if is_cursor else f"\033[37m{option}\033[0m"
-            sys.stdout.write(f"{prefix}{chk} {label}\r\n")
-
-        sys.stdout.flush()
-
-    try:
-        tty.setraw(fd)
-        sys.stdout.write("\033[?25l")  # Hide cursor
-        draw_menu(is_initial=True)
-
-        while True:
-            ch = sys.stdin.read(1)
-            if ch == "\x1b":
-                next1 = sys.stdin.read(1)
-                next2 = sys.stdin.read(1)
-                if next1 == "[":
-                    if next2 == "A":  # Up arrow
-                        cursor = (cursor - 1) % len(options)
-                    elif next2 == "B":  # Down arrow
-                        cursor = (cursor + 1) % len(options)
-            elif ch == " ":  # Spacebar
-                if multi_select:
-                    selected[cursor] = not selected[cursor]
-                else:
-                    selected = [False] * len(options)
-                    selected[cursor] = True
-            elif ch.lower() == "a" and multi_select:
-                all_val = not all(selected)
-                selected = [all_val] * len(options)
-            elif ch in ["\r", "\n"]:  # Enter
-                break
-            elif ch == "\x03":  # Ctrl+C
-                sys.exit(0)
-
-            draw_menu(is_initial=False)
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-        sys.stdout.write("\033[?25h\n")  # Show cursor
-
-    return [idx for idx, sel in enumerate(selected) if sel]
-
-
-def interactive_menu(results_dir: str) -> None:
-    """
-    Launches an interactive terminal checklist menu to select runs and metrics for multi-plot generation.
+    Discovers every run CSV and every available metric under results_dir, and generates
+    one comparison plot per metric across all runs.
     """
     results_dir = os.path.abspath(results_dir)
     print("\n" + "=" * 65)
-    print("      Contextual RL Interactive Plotting CLI")
+    print("      Contextual RL Plotting CLI")
     print("=" * 65)
 
     csv_files = discover_csv_files(results_dir)
@@ -163,54 +83,27 @@ def interactive_menu(results_dir: str) -> None:
         print(f"\n[ERROR] No result CSV files found in '{results_dir}'. Run a training script first.")
         return
 
-    rel_paths = [os.path.relpath(f, PROJECT_ROOT) for f in csv_files]
+    print(f"\n[INFO] Found {len(csv_files)} run file(s).")
 
-    # 1. Interactive Run Selection
-    selected_run_indices = select_interactive(
-        title=f"SELECT EXPERIMENT RUNS TO PLOT ({len(csv_files)} runs found):",
-        options=rel_paths,
-        multi_select=True,
-    )
-
-    if not selected_run_indices:
-        print("[ERROR] No runs selected.")
-        return
-
-    selected_files = [csv_files[i] for i in selected_run_indices]
-    print(f"\n[INFO] Selected {len(selected_files)} run file(s).")
-
-    # 2. Interactive Metric Selection
-    available_metrics = get_available_metrics(selected_files)
+    available_metrics = get_available_metrics(csv_files)
     if not available_metrics:
-        print("[ERROR] No numeric metric columns found in selected CSV files.")
+        print("[ERROR] No numeric metric columns found in the discovered CSV files.")
         return
 
-    formatted_metrics = [f"{m:15s} ({m.replace('_', ' ').title()})" for m in available_metrics]
-    selected_metric_indices = select_interactive(
-        title="SELECT METRICS TO PLOT (Multiple selection supported):",
-        options=formatted_metrics,
-        multi_select=True,
-    )
+    print(f"[INFO] Plotting {len(available_metrics)} metric(s): {', '.join(available_metrics)}")
 
-    if not selected_metric_indices:
-        selected_metric_indices = [0]
-
-    selected_metrics = [available_metrics[i] for i in selected_metric_indices]
-    print(f"[INFO] Selected {len(selected_metrics)} metric(s): {', '.join(selected_metrics)}")
-
-    # 3. Generate All Selected Plots
     print("\n" + "-" * 65)
     print("      GENERATING PLOTS")
     print("-" * 65)
 
     plotter = Plotter()
-    for metric in selected_metrics:
+    for metric in available_metrics:
         metric_title = f"PPO {metric.replace('_', ' ').title()} Comparison"
         output_filename = f"{metric}_comparison.png"
         output_path = os.path.join(results_dir, output_filename)
 
         plotter.plot_multiple_csv_runs(
-            filepaths=selected_files,
+            filepaths=csv_files,
             title=metric_title,
             output_path=output_path,
             metric_col=metric,
@@ -218,19 +111,20 @@ def interactive_menu(results_dir: str) -> None:
         rel_output = os.path.relpath(output_path, PROJECT_ROOT)
         print(f"  [SUCCESS] Created {metric.replace('_', ' ').title()} Plot: '{rel_output}'")
 
-    print("\n[SUCCESS] All selected plot images generated successfully!\n")
+    print("\n[SUCCESS] All plot images generated successfully!\n")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Plot results across multiple CSV runs via interactive menu or CLI arguments."
+        description="Plot results across multiple CSV runs. Defaults to generating every "
+        "metric-comparison plot for every discovered run."
     )
     parser.add_argument(
         "--files",
         type=str,
         nargs="+",
         default=None,
-        help="List of CSV file paths to plot.",
+        help="List of CSV file paths to plot (single-metric mode, use with --metric_col).",
     )
     parser.add_argument(
         "--dir",
@@ -242,30 +136,25 @@ def main():
         "--title",
         type=str,
         default=None,
-        help="Custom title for the plot.",
+        help="Custom title for the plot (single-metric mode).",
     )
     parser.add_argument(
         "--output",
         type=str,
         default=None,
-        help="Output file path for the plot image.",
+        help="Output file path for the plot image (single-metric mode).",
     )
     parser.add_argument(
         "--metric_col",
         type=str,
         default=None,
-        help="CSV column name to plot (e.g. 'mean_return', 'value_loss').",
-    )
-    parser.add_argument(
-        "--interactive",
-        action="store_true",
-        help="Force launch interactive terminal menu mode.",
+        help="CSV column name to plot (e.g. 'mean_return', 'value_loss'). Triggers single-metric mode.",
     )
 
     args = parser.parse_args()
 
-    if args.interactive or (not args.files and args.metric_col is None and args.output is None):
-        interactive_menu(args.dir)
+    if not args.files and args.metric_col is None and args.output is None:
+        generate_all_plots(args.dir)
     else:
         filepaths: List[str] = []
         if args.files:

@@ -1,10 +1,13 @@
-best_score: 26.59064913562563
-env_name: CARLCartPole
+best_eval_mean_return: -1262.1422993398116
+best_eval_std_across_seeds: 14.257103067043358
+best_probing_r2: 0.08441066664049612
+env_name: CARLPendulum
 hyperparameters:
-  cpc_temperature: 0.0524269386259731
-  encoder_lr: 0.00013066739238053285
-  hidden_dim: 32
-  latent_dim: 8
-  max_history_len: 10
-  predict_horizon: 5
+  cpc_temperature: 0.3442609284120312
+  encoder_lr: 0.0001717270103826633
+  latent_dim: 16
 mode: cpc
+trial_seeds:
+- 100
+- 200
+- 300

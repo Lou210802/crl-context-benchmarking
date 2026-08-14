@@ -56,10 +56,10 @@ def _get_context_id(env, obs=None) -> int:
 def train_single_run(
     mode: str = "context_free",
     env_name: str = "CARLPendulum",
-    total_steps: int = 51200,
+    total_steps: int = 25000,  # Proposal: 10k-15k steps (was 15000). Tutor feedback: joint encoder+policy training needs more steps so encoder differences don't get lost in seed noise -- raised to 25k.
     rollout_steps: int = 2048,
     seed: int = 0,
-    num_contexts: int = 100,
+    num_contexts: int = 30,  # Sopt (optimization contexts, proposal's 10-50 range; was 10). Raised to reduce context-sampling noise per tutor feedback on seed variance.
     train_context_seed: int = 42,
     vary_contexts: Optional[List[str]] = None,
     latent_dim: int = 8,
