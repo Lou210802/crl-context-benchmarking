@@ -1,0 +1,11 @@
+env_name: CARLPendulum
+eval_context_seed: 9999
+eval_episodes: 20
+eval_mean_length: 200.0
+eval_mean_return: -1023.5763517482206
+eval_std_return: 297.08558854951815
+mode: cpc
+non_linear_probing_r2: 0.6355986896358811
+num_eval_contexts: 25
+probing_mse: 5.191767631162031
+probing_r2: 0.15099412190791248
