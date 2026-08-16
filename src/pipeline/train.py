@@ -1,22 +1,21 @@
 """
 Unified Training Pipeline for Contextual Reinforcement Learning Benchmarking.
-
 Supports training across benchmark algorithms:
   - context_free: PPO on state observation only
   - oracle: PPO on state observation + ground-truth context parameters
   - vae: PPO augmented with Variational Autoencoder (VAE) representation
+  - cpc: PPO augmented with Contrastive Predictive Coding (CPC) representation
 """
-
 from datetime import datetime
 import os
 import sys
 from typing import Any, Dict, List, Optional
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import gymnasium as gym
-
 import yaml
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -54,31 +53,30 @@ def _get_context_id(env, obs=None) -> int:
 
 
 def train_single_run(
-    mode: str = "context_free",
-    env_name: str = "CARLPendulum",
-    total_steps: int = 51200,
-    rollout_steps: int = 2048,
-    seed: int = 0,
-    num_contexts: int = 100,
-    train_context_seed: int = 42,
-    vary_contexts: Optional[List[str]] = None,
-    latent_dim: int = 8,
-    hidden_dim: int = 64,
-    encoder_lr: float = 3e-4,
-    kl_weight: float = 1e-3,
-    cpc_temperature: float = 0.1,
-    predict_horizon: int = 3,
-    max_history_len: int = 25,
-    exp_tag: str = "",
-    output_dir: str = "results",
-    use_bo_config: bool = True,
+        mode: str = "context_free",
+        env_name: str = "CARLPendulum",
+        total_steps: int = 51200,
+        rollout_steps: int = 2048,
+        seed: int = 0,
+        num_contexts: int = 100,
+        train_context_seed: int = 42,
+        vary_contexts: Optional[List[str]] = None,
+        latent_dim: int = 8,
+        hidden_dim: int = 64,
+        encoder_lr: float = 3e-4,
+        kl_weight: float = 1e-3,
+        cpc_temperature: float = 0.1,
+        predict_horizon: int = 3,
+        max_history_len: int = 25,
+        exp_tag: str = "",
+        output_dir: str = "results",
+        use_bo_config: bool = True,
 ) -> str:
     """
     Trains a single RL model checkpoint on training context environments.
     """
     output_dir = resolve_path(output_dir)
 
-    # Automatically load tuned BO hyperparameters if saved config file exists and requested
     if use_bo_config:
         best_yaml_path = resolve_path(os.path.join("configs", f"best_hyperparams_{mode}.yaml"))
         if os.path.exists(best_yaml_path):
@@ -96,21 +94,19 @@ def train_single_run(
                         cpc_temperature = hp.get("cpc_temperature", cpc_temperature)
                         predict_horizon = hp.get("predict_horizon", predict_horizon)
                         max_history_len = hp.get("max_history_len", max_history_len)
-                        print(f"[BO CONFIG] Loaded tuned BO hyperparameters for '{mode.upper()}' ({env_name}) from '{best_yaml_path}'")
+                        print(
+                            f"[BO CONFIG] Loaded tuned BO hyperparameters for '{mode.upper()}' ({env_name}) from '{best_yaml_path}'")
                     else:
-                        print(f"[BO CONFIG] Ignored BO hyperparams for '{mode.upper()}' because environment mismatch ({cfg_env} vs {env_name})")
+                        print(
+                            f"[BO CONFIG] Ignored BO hyperparams for '{mode.upper()}' because environment mismatch ({cfg_env} vs {env_name})")
             except Exception as e:
                 print(f"[WARNING] Could not load BO hyperparameters from '{best_yaml_path}': {e}")
 
-    # Restrict PyTorch thread count per worker process to 1 thread to avoid CPU thread contention
     torch.set_num_threads(1)
 
-
-    # Set seeds
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    # Make training environment
     env = make_env(
         env_name,
         seed=seed,
@@ -118,10 +114,10 @@ def train_single_run(
         context_seed=train_context_seed,
         vary_contexts=vary_contexts,
     )
+
     is_continuous = isinstance(env.action_space, gym.spaces.Box)
     action_dim = env.action_space.shape[0] if is_continuous else env.action_space.n
 
-    # Setup deterministic run directory inside results/ (allows overwriting)
     tag_str = f"_{exp_tag}" if exp_tag else ""
     folder_name = f"{total_steps}steps_{env_name.lower().replace('-', '_')}_{mode}_seed{seed}{tag_str}"
     run_dir = os.path.join(output_dir, folder_name)
@@ -129,7 +125,6 @@ def train_single_run(
     exp_name = f"{mode}_seed{seed}"
     logger = ExperimentLogger(output_dir=run_dir, experiment_name=exp_name)
 
-    # Determine state and input dimensions
     obs, _ = env.reset(seed=seed)
     raw_state = extract_raw_state(obs)
     raw_state_dim = len(raw_state)
@@ -138,7 +133,6 @@ def train_single_run(
     vae_encoder: Optional[VAEContextEncoder] = None
     cpc_encoder: Optional[CPCContextEncoder] = None
     encoder_optimizer: Optional[torch.optim.Optimizer] = None
-
     device = torch.device("cpu")
     device_name = "CPU"
 
@@ -179,7 +173,6 @@ def train_single_run(
 
     agent = BasePPOAgent(input_dim=input_dim, action_dim=action_dim, is_continuous=is_continuous, device=device)
 
-    # Save hyperparameters
     hyperparams = {
         "env_name": env_name,
         "mode": mode,
@@ -207,7 +200,8 @@ def train_single_run(
     ep_return = 0.0
     completed_returns: List[float] = []
 
-    print(f"\n[TRAIN] Mode: {mode.upper()} | Env: {env_name} | Seed: {seed} | Device: {device_name} | Input Dim: {input_dim}")
+    print(
+        f"\n[TRAIN] Mode: {mode.upper()} | Env: {env_name} | Seed: {seed} | Device: {device_name} | Input Dim: {input_dim}")
 
     curr_obs = obs
     curr_hist_tensor = history_buf.get_tensor(pad_to_max=True) if history_buf else None
@@ -228,17 +222,18 @@ def train_single_run(
 
     while global_step < total_steps:
         trajectory = []
-
         for _ in range(rollout_steps):
             context_id = _get_context_id(env, curr_obs)
+
             if mode in ["context_free", "oracle"]:
                 policy_input = extract_input(curr_obs, env, mode)
                 action, logp, ent, val = agent.predict(policy_input)
                 next_obs, reward, term, trunc, _ = env.step(action)
                 done = term or trunc
                 next_policy_input = extract_input(next_obs, env, mode)
-
-                trajectory.append((policy_input, action, logp, ent, reward, term, trunc, next_policy_input, None, None, None, context_id))
+                trajectory.append(
+                    (policy_input, action, logp, ent, reward, term, trunc, next_policy_input, None, None, None,
+                     context_id))
             else:
                 raw_state = extract_raw_state(curr_obs)
                 policy_input = np.concatenate([raw_state, curr_z_np], axis=0)
@@ -249,11 +244,10 @@ def train_single_run(
 
                 history_buf.add(raw_state, action, float(reward))
                 next_raw_state = extract_raw_state(next_obs)
-
                 next_hist_tensor = history_buf.get_tensor(pad_to_max=True)
                 next_z_np = _extract_z(next_hist_tensor)
-
                 next_policy_input = np.concatenate([next_raw_state, next_z_np], axis=0)
+
                 trajectory.append((
                     policy_input,
                     action,
@@ -268,7 +262,6 @@ def train_single_run(
                     next_raw_state,
                     context_id,
                 ))
-
                 curr_hist_tensor = next_hist_tensor
                 curr_z_np = next_z_np
 
@@ -287,25 +280,24 @@ def train_single_run(
             else:
                 curr_obs = next_obs
 
-        # Update representation encoder network (VAE / CPC)
         repr_loss_val = 0.0
         if mode in ["vae", "cpc"] and encoder_optimizer is not None:
             N = len(trajectory)
             K = max(1, predict_horizon)
-
             hist_list = []
             state_seq_list = []
             action_seq_list = []
             next_state_seq_list = []
             reward_seq_list = []
+            valid_seq_list = []
             ep_ids = []
 
             for idx in range(N):
                 hist_list.append(trajectory[idx][8])
                 ep_ids.append(trajectory[idx][11])
-
-                s_seq, a_seq, ns_seq, r_seq = [], [], [], []
+                s_seq, a_seq, ns_seq, r_seq, valid_seq = [], [], [], [], []
                 curr_i = idx
+                is_valid = 1.0
                 for k in range(K):
                     st = trajectory[curr_i]
                     s_seq.append(st[9])
@@ -318,28 +310,32 @@ def train_single_run(
                         a_seq.append(act_vec)
                     ns_seq.append(st[10])
                     r_seq.append([st[4]])
+                    valid_seq.append([is_valid])
 
                     done = st[5] or st[6]
-                    if not done and curr_i + 1 < N:
+                    if done or curr_i + 1 >= N:
+                        is_valid = 0.0
+                    else:
                         curr_i += 1
 
                 state_seq_list.append(s_seq)
                 action_seq_list.append(a_seq)
                 next_state_seq_list.append(ns_seq)
                 reward_seq_list.append(r_seq)
+                valid_seq_list.append(valid_seq)
 
             hist_batch = torch.cat(hist_list, dim=0)
             state_seq_batch = torch.tensor(np.array(state_seq_list), dtype=torch.float32)
             action_seq_batch = torch.tensor(np.array(action_seq_list), dtype=torch.float32)
             next_state_seq_batch = torch.tensor(np.array(next_state_seq_list), dtype=torch.float32)
             reward_seq_batch = torch.tensor(np.array(reward_seq_list), dtype=torch.float32)
+            valid_seq_batch = torch.tensor(np.array(valid_seq_list), dtype=torch.float32)
             ep_ids = np.array(ep_ids)
 
             encoder_epochs = 1
             batch_size = 64
             num_samples = len(hist_batch)
             indices = np.arange(num_samples)
-
             active_encoder = vae_encoder if mode == "vae" else cpc_encoder
 
             for epoch in range(encoder_epochs):
@@ -353,9 +349,11 @@ def train_single_run(
                     mb_action = action_seq_batch[mb_idx]
                     mb_next_state = next_state_seq_batch[mb_idx]
                     mb_reward = reward_seq_batch[mb_idx]
+                    mb_valid_mask = valid_seq_batch[mb_idx].to(device)
                     mb_ep_ids = torch.tensor(ep_ids[mb_idx], dtype=torch.long, device=device)
 
                     encoder_optimizer.zero_grad()
+
                     if mode == "vae" and vae_encoder is not None:
                         loss_dict = vae_encoder.compute_loss(mb_hist, mb_state, mb_action, mb_next_state, mb_reward)
                     elif mode == "cpc" and cpc_encoder is not None:
@@ -366,23 +364,25 @@ def train_single_run(
                             mb_next_state,
                             mb_reward,
                             ep_ids=mb_ep_ids,
+                            valid_mask=mb_valid_mask,
                         )
 
                     repr_loss = loss_dict["loss"]
                     repr_loss.backward()
+
                     if active_encoder is not None:
                         torch.nn.utils.clip_grad_norm_(active_encoder.parameters(), max_norm=1.0)
+
                     encoder_optimizer.step()
                     repr_loss_val = repr_loss.item()
                     last_loss_dict = {k: v.item() for k, v in loss_dict.items()}
 
-        # Update PPO Agent
         ppo_traj = [(s, a, lp, e, r, tm, tr, ns, h) for (s, a, lp, e, r, tm, tr, ns, h, *_) in trajectory]
         p_loss, v_loss, e_loss = agent.update(ppo_traj)
 
-        # Log training metrics
         recent_returns = completed_returns[-10:] if completed_returns else [0.0]
         mean_ret = float(np.mean(recent_returns))
+
         log_dict = {
             "step": global_step,
             "mean_return": mean_ret,
@@ -390,6 +390,7 @@ def train_single_run(
             "value_loss": v_loss,
             "entropy_loss": e_loss,
         }
+
         if mode == "vae":
             log_dict["vae_loss"] = repr_loss_val
         elif mode == "cpc":
@@ -403,6 +404,7 @@ def train_single_run(
 
         loss_label = "VAE" if mode == "vae" else "CPC"
         loss_str = ""
+
         if mode == "vae":
             loss_str = f"VAE Loss: {repr_loss_val:6.3f} | "
         elif mode == "cpc":
@@ -410,7 +412,7 @@ def train_single_run(
                 inf = last_loss_dict.get("cpc_loss", 0.0)
                 sup = last_loss_dict.get("supcon_loss", 0.0)
                 aux = last_loss_dict.get("aux_dyn_loss", 0.0)
-                loss_str = f"CPC Total: {repr_loss_val:5.2f} [InfoNCE: {inf:4.2f} | SupCon: {sup:4.2f} | AuxMSE: {aux:4.2f}] | "
+                loss_str = f"CPC Total: {repr_loss_val:5.2f} [InfoNCE: {inf:4.2f} | SupCon (w): {sup * 0.05:4.2f} | AuxMSE (w): {aux * 2.0:4.2f}] | "
             else:
                 loss_str = f"CPC Loss: {repr_loss_val:6.3f} | "
 
@@ -421,10 +423,8 @@ def train_single_run(
             f"Value Loss: {v_loss:7.2f}"
         )
 
-    # Save metrics CSV and model weights inside run_dir
     logger.save()
     agent.save_checkpoint(os.path.join(run_dir, "agent.pt"))
-
     if vae_encoder:
         torch.save(vae_encoder.state_dict(), os.path.join(run_dir, "vae_encoder.pt"))
     if cpc_encoder:
@@ -432,4 +432,3 @@ def train_single_run(
 
     print(f"[SUCCESS] Saved trained model checkpoint to '{run_dir}'")
     return run_dir
-

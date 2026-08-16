@@ -28,6 +28,7 @@ from src.models.cpc_encoder import CPCContextEncoder
 from src.pipeline.probing import (
     probe_latent_context,
     visualize_latent_space_pca,
+    visualize_pca_analysis,
     visualize_probing_scatter,
 )
 from src.utils.env_utils import (
@@ -287,7 +288,7 @@ def evaluate_run_directory(
         eval_results["non_linear_probing_r2"] = probing_results["non_linear_r2"]
         eval_results["probing_mse"] = probing_results["probing_mse"]
 
-        # PCA Visualization
+        # PCA Visualization (2D Scatter)
         pca_plot_path = os.path.join(run_dir, "latent_space_pca.png")
         primary_color_vals = c_arr[:, 0]
         color_label = context_keys[0].capitalize() if context_keys else "Context Value"
@@ -297,6 +298,17 @@ def evaluate_run_directory(
             color_label=color_label,
             title=f"Latent Context Space ({mode.upper()}) PCA on {env_name}",
             output_path=pca_plot_path,
+        )
+
+        # Multi-panel PCA Analysis Plot (Scree Plot & Probing Projections)
+        pca_analysis_path = os.path.join(run_dir, "pca_analysis.png")
+        visualize_pca_analysis(
+            latent_vectors=z_arr,
+            color_values=primary_color_vals,
+            pred_color_values=probing_results.get("non_linear_pred_contexts"),
+            color_label=color_label,
+            title=f"Latent Context PCA Analysis ({mode.upper()}) on {env_name}",
+            output_path=pca_analysis_path,
         )
 
         # Probing Prediction Scatter Plot (Linear)
@@ -309,6 +321,18 @@ def evaluate_run_directory(
             probe_type="Linear",
             context_label=color_label,
             output_path=prob_plot_path,
+        )
+
+        # Probing Prediction Scatter Plot (Non-Linear)
+        non_linear_prob_plot_path = os.path.join(run_dir, "non_linear_probing_scatter.png")
+        visualize_probing_scatter(
+            true_contexts=c_arr,
+            pred_contexts=probing_results["non_linear_pred_contexts"],
+            r2_score=probing_results["non_linear_r2"],
+            mode=mode,
+            probe_type="Non-Linear",
+            context_label=color_label,
+            output_path=non_linear_prob_plot_path,
         )
 
     # 5. Automatically plot training curves image inside run_dir
@@ -351,6 +375,7 @@ def plot_evaluation_comparison_bar_chart(
     # Group mean and std returns by mode
     grouped_data: Dict[str, List[float]] = {}
     r2_data: Dict[str, List[float]] = {}
+    nl_r2_data: Dict[str, List[float]] = {}
 
     for res in eval_summaries:
         m = res["mode"].lower()
@@ -361,6 +386,10 @@ def plot_evaluation_comparison_bar_chart(
             if m not in r2_data:
                 r2_data[m] = []
             r2_data[m].append(res["probing_r2"])
+        if "non_linear_probing_r2" in res:
+            if m not in nl_r2_data:
+                nl_r2_data[m] = []
+            nl_r2_data[m].append(res["non_linear_probing_r2"])
 
     modes = list(grouped_data.keys())
     means = [np.mean(grouped_data[m]) for m in modes]
@@ -412,33 +441,102 @@ def plot_evaluation_comparison_bar_chart(
     plt.savefig(output_path, dpi=300)
     plt.close(fig)
 
-    # 2. Also generate Linear Probing R^2 Comparison Bar Chart if representation modes are present
+    # 2. Also generate Probing R^2 Comparison Bar Chart (Linear vs Non-Linear) if representation modes are present
     if r2_data:
         r2_modes = list(r2_data.keys())
         r2_lin_means = [np.mean(r2_data[m]) for m in r2_modes]
         r2_lin_stds = [np.std(r2_data[m]) if len(r2_data[m]) > 1 else 0.0 for m in r2_modes]
 
+        has_nl = bool(nl_r2_data)
+        if has_nl:
+            r2_nl_means = [np.mean(nl_r2_data.get(m, r2_data[m])) for m in r2_modes]
+            r2_nl_stds = [np.std(nl_r2_data[m]) if m in nl_r2_data and len(nl_r2_data[m]) > 1 else 0.0 for m in r2_modes]
+
         r2_output_path = os.path.join(os.path.dirname(output_path), "probing_r2_comparison.png")
-        fig2, ax2 = plt.subplots(figsize=(8, 5), dpi=300)
+        fig2, ax2 = plt.subplots(figsize=(9, 5.5), dpi=300)
 
-        bars2 = ax2.bar(
-            [m.upper() for m in r2_modes],
-            r2_lin_means,
-            yerr=r2_lin_stds,
-            capsize=5,
-            color="#1f77b4",
-            edgecolor="black",
-            alpha=0.85,
-        )
+        x = np.arange(len(r2_modes))
+        width = 0.35 if has_nl else 0.5
 
-        ax2.set_title("Linear Context Probing R² Score Comparison", fontsize=13, fontweight="bold", pad=12)
-        ax2.set_ylabel("Linear Probing R² Score (Higher is Better)", fontsize=11, fontweight="bold")
+        if has_nl:
+            rects1 = ax2.bar(
+                x - width / 2,
+                r2_lin_means,
+                width,
+                yerr=r2_lin_stds,
+                capsize=5,
+                label="Linear Probe R²",
+                color="#1f77b4",
+                edgecolor="black",
+                alpha=0.85,
+            )
+            rects2 = ax2.bar(
+                x + width / 2,
+                r2_nl_means,
+                width,
+                yerr=r2_nl_stds,
+                capsize=5,
+                label="Non-Linear Probe R² (RF)",
+                color="#ff7f0e",
+                edgecolor="black",
+                alpha=0.85,
+            )
+
+            for rect in rects1:
+                height = rect.get_height()
+                ax2.annotate(
+                    f"{height:.3f}",
+                    xy=(rect.get_x() + rect.get_width() / 2, height + 0.02),
+                    xytext=(0, 2),
+                    textcoords="offset points",
+                    ha="center",
+                    va="bottom",
+                    fontsize=9,
+                    fontweight="bold",
+                )
+            for rect in rects2:
+                height = rect.get_height()
+                ax2.annotate(
+                    f"{height:.3f}",
+                    xy=(rect.get_x() + rect.get_width() / 2, height + 0.02),
+                    xytext=(0, 2),
+                    textcoords="offset points",
+                    ha="center",
+                    va="bottom",
+                    fontsize=9,
+                    fontweight="bold",
+                )
+
+            ax2.set_xticks(x)
+            ax2.set_xticklabels([m.upper() for m in r2_modes], fontsize=11, fontweight="bold")
+            ax2.legend(loc="upper left", fontsize=10, frameon=True)
+        else:
+            bars2 = ax2.bar(
+                [m.upper() for m in r2_modes],
+                r2_lin_means,
+                yerr=r2_lin_stds,
+                capsize=5,
+                color="#1f77b4",
+                edgecolor="black",
+                alpha=0.85,
+            )
+            for rect in bars2:
+                height = rect.get_height()
+                ax2.annotate(
+                    f"{height:.3f}",
+                    xy=(rect.get_x() + rect.get_width() / 2, height + 0.02),
+                    xytext=(0, 2),
+                    textcoords="offset points",
+                    ha="center",
+                    va="bottom",
+                    fontsize=9,
+                    fontweight="bold",
+                )
+
+        ax2.set_title("Context Probing R² Score Comparison (Linear vs Non-Linear)", fontsize=13, fontweight="bold", pad=12)
+        ax2.set_ylabel("Probing R² Score (Higher is Better)", fontsize=11, fontweight="bold")
         ax2.set_xlabel("Representation Algorithm", fontsize=11, fontweight="bold")
-        ax2.set_ylim(0.0, 1.05)
-
-        for rect in bars2:
-            height = rect.get_height()
-            ax2.annotate(f"{height:.3f}", xy=(rect.get_x() + rect.get_width() / 2, height + 0.02), xytext=(0, 2), textcoords="offset points", ha="center", va="bottom", fontsize=9, fontweight="bold")
+        ax2.set_ylim(0.0, 1.12)
 
         sns.despine(ax=ax2, top=True, right=True)
         plt.tight_layout()

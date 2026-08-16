@@ -1,9 +1,10 @@
-best_score: 29.08892949149728
+best_score: 405.47929723459737
 env_name: CARLCartPole
 hyperparameters:
-  encoder_lr: 0.00013066739238053285
-  hidden_dim: 32
-  kl_weight: 0.00011527987128232407
-  latent_dim: 8
-  max_history_len: 10
+  encoder_lr: 0.0007309539835912913
+  hidden_dim: 128
+  kl_weight: 0.00014742753159914678
+  latent_dim: 4
+  max_history_len: 25
+  predict_horizon: 2
 mode: vae

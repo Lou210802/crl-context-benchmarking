@@ -1,4 +1,4 @@
-best_score: 26.59064913562563
+best_score: 653.2930568310557
 env_name: CARLCartPole
 hyperparameters:
   cpc_temperature: 0.0524269386259731
