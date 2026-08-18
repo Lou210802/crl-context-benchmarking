@@ -11,9 +11,10 @@ Commands:
     # 3. Generate every metric-comparison plot for all runs in a directory:
     python main.py plot --dir results
 
-    # 4. Full end-to-end benchmark (BO -> Train -> Evaluate -> Plot). BO runs for vae/cpc by
-    #    default, tuned at --bo_steps (defaults to --total_steps); pass --skip_bo to reuse an
-    #    existing configs/best_hyperparams_<mode>.yaml instead:
+    # 4. Full end-to-end benchmark (BO -> Train -> Evaluate -> Plot). BO runs for every mode in
+    #    --modes by default (encoder search space for vae/cpc, small PPO search space for
+    #    oracle/context_free), tuned at --bo_steps (defaults to --total_steps); pass --skip_bo
+    #    to reuse an existing configs/best_hyperparams_<mode>.yaml instead:
     python main.py run-all --env CARLPendulum --seeds 0 1 2 --total_steps 51200 --num_workers 4
 
     # 5. Pilot runs to pick a sufficient total_steps PER MODE (run before optimize/run-all):
@@ -28,6 +29,15 @@ import sys
 import warnings
 from typing import List, Tuple, Any, Optional
 import numpy as np
+
+# Bug fix (not in proposal): force the headless 'Agg' backend before any matplotlib.pyplot import
+# happens anywhere downstream (train/evaluate/probing/bo_search/pilot_runs all plot to PNG files,
+# never plt.show()). Without this, matplotlib auto-picks an interactive backend (TkAgg on Windows
+# when tkinter is present), which causes spurious "RuntimeError: main thread is not in main loop"
+# errors from Tk's image garbage collector during long eval loops with many sequential plots. The
+# PNGs still saved correctly either way -- this just removes the noisy, harmless-looking errors.
+import matplotlib
+matplotlib.use("Agg")
 
 # Restrict OpenMP, MKL, OpenBLAS, etc. to 1 thread per worker to prevent CPU thread thrashing across workers
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -200,13 +210,14 @@ def main():
     # -------------------------------------------------------------
     # 4. OPTIMIZE Command (Bayesian Optimization)
     # -------------------------------------------------------------
-    opt_parser = subparsers.add_parser("optimize", help="Run Bayesian Optimization (BO) hyperparameter search for VAE/CPC.")
+    opt_parser = subparsers.add_parser("optimize", help="Run Bayesian Optimization (BO) hyperparameter search.")
     opt_parser.add_argument(
         "--modes",
         type=str,
         nargs="+",
         default=["vae", "cpc"],
-        help="Representation algorithms to optimize ('vae', 'cpc').",
+        help="Modes to optimize ('vae', 'cpc', 'oracle', 'context_free', or 'all'). vae/cpc tune "
+        "the encoder; oracle/context_free tune PPO itself (lr_actor, lr_critic, ent_coef).",
     )
     opt_parser.add_argument(
         "--env",
@@ -435,10 +446,10 @@ def main():
     elif args.command == "optimize":
         modes = args.modes
         if "all" in modes:
-            modes = ["vae", "cpc"]
+            modes = ["context_free", "oracle", "vae", "cpc"]
 
         for m in modes:
-            if m in ["vae", "cpc"]:
+            if m in ["vae", "cpc", "oracle", "context_free"]:
                 run_bayesian_optimization(
                     mode=m,
                     env_name=args.env,
@@ -471,7 +482,7 @@ def main():
             modes = ["context_free", "oracle", "vae", "cpc"]
 
         if not args.skip_bo:
-            bo_modes = [m for m in modes if m in ("vae", "cpc")]
+            bo_modes = [m for m in modes if m in ("vae", "cpc", "oracle", "context_free")]
             bo_steps = args.bo_steps if args.bo_steps is not None else args.total_steps
             for m in bo_modes:
                 print("\n" + "=" * 65)

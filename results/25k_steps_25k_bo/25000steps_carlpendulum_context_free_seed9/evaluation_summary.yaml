@@ -1,0 +1,8 @@
+env_name: CARLPendulum
+eval_context_seed: 9999
+eval_episodes: 20
+eval_mean_length: 200.0
+eval_mean_return: -1116.1689051844646
+eval_std_return: 255.88527720481827
+mode: context_free
+num_eval_contexts: 25

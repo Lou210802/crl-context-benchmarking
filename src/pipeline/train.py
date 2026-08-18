@@ -67,8 +67,13 @@ def train_single_run(
     encoder_lr: float = 3e-4,
     kl_weight: float = 1e-3,
     cpc_temperature: float = 0.1,
+    cpc_aux_weight: float = 1.0,  # Team decision (not in proposal): weight for CPC's aux_dyn_loss term, analogous to VAE's reward_weight/kl_weight -- see CPCContextEncoder docstring. Matches colleague's lambda_aux=1.0. We first tried 0.1 based on our own loss curves; that made held-out eval worse on a 200k/16-seed run, so reverted to match his working config.
+    cpc_supcon_weight: float = 0.1,  # See cpc_aux_weight above; weight for CPC's supcon_loss term. Matches colleague's lambda_supcon=0.1.
     predict_horizon: int = 3,
     max_history_len: int = 25,
+    lr_actor: float = 3e-4,  # Team decision (not in proposal): oracle/context_free previously always ran with fixed PPO defaults while vae/cpc got BO-tuned encoders -- exposed so 'optimize'/run-all BO can tune PPO itself for the two baselines too.
+    lr_critic: float = 3e-4,  # See lr_actor above.
+    ent_coef: float = 0.01,  # See lr_actor above.
     exp_tag: str = "",
     output_dir: str = "results",
     use_bo_config: bool = True,
@@ -94,8 +99,13 @@ def train_single_run(
                         encoder_lr = hp.get("encoder_lr", encoder_lr)
                         kl_weight = hp.get("kl_weight", kl_weight)
                         cpc_temperature = hp.get("cpc_temperature", cpc_temperature)
+                        cpc_aux_weight = hp.get("cpc_aux_weight", cpc_aux_weight)
+                        cpc_supcon_weight = hp.get("cpc_supcon_weight", cpc_supcon_weight)
                         predict_horizon = hp.get("predict_horizon", predict_horizon)
                         max_history_len = hp.get("max_history_len", max_history_len)
+                        lr_actor = hp.get("lr_actor", lr_actor)
+                        lr_critic = hp.get("lr_critic", lr_critic)
+                        ent_coef = hp.get("ent_coef", ent_coef)
                         print(f"[BO CONFIG] Loaded tuned BO hyperparameters for '{mode.upper()}' ({env_name}) from '{best_yaml_path}'")
                     else:
                         print(f"[BO CONFIG] Ignored BO hyperparams for '{mode.upper()}' because environment mismatch ({cfg_env} vs {env_name})")
@@ -173,11 +183,21 @@ def train_single_run(
                 hidden_dim=hidden_dim,
                 predict_horizon=predict_horizon,
                 temperature=cpc_temperature,
+                aux_weight=cpc_aux_weight,
+                supcon_weight=cpc_supcon_weight,
                 device=device,
             )
             encoder_optimizer = torch.optim.Adam(cpc_encoder.parameters(), lr=encoder_lr, eps=1e-5)
 
-    agent = BasePPOAgent(input_dim=input_dim, action_dim=action_dim, is_continuous=is_continuous, device=device)
+    agent = BasePPOAgent(
+        input_dim=input_dim,
+        action_dim=action_dim,
+        is_continuous=is_continuous,
+        lr_actor=lr_actor,
+        lr_critic=lr_critic,
+        ent_coef=ent_coef,
+        device=device,
+    )
 
     # Save hyperparameters
     hyperparams = {
@@ -194,8 +214,13 @@ def train_single_run(
         "encoder_lr": encoder_lr,
         "kl_weight": kl_weight,
         "cpc_temperature": cpc_temperature,
+        "cpc_aux_weight": cpc_aux_weight,
+        "cpc_supcon_weight": cpc_supcon_weight,
         "predict_horizon": predict_horizon,
         "max_history_len": max_history_len,
+        "lr_actor": lr_actor,
+        "lr_critic": lr_critic,
+        "ent_coef": ent_coef,
         "is_continuous": is_continuous,
         "raw_state_dim": raw_state_dim,
         "input_dim": input_dim,
@@ -298,14 +323,16 @@ def train_single_run(
             action_seq_list = []
             next_state_seq_list = []
             reward_seq_list = []
+            valid_seq_list = []  # Bug fix (not in proposal): once an episode ends or the rollout buffer boundary is hit mid-horizon, curr_i stops advancing and the same transition gets repeated for the remaining k steps. Without tracking which steps are real vs. repeated padding, those duplicates silently contaminate the multi-step InfoNCE/aux-MSE loss. Colleague's pushed main branch tracks this via a valid_mask; matched here for CPC (see CPCContextEncoder.compute_loss). VAE's compute_loss doesn't accept a valid_mask on either branch yet -- same gap, left as-is for now.
             ep_ids = []
 
             for idx in range(N):
                 hist_list.append(trajectory[idx][8])
                 ep_ids.append(trajectory[idx][11])
 
-                s_seq, a_seq, ns_seq, r_seq = [], [], [], []
+                s_seq, a_seq, ns_seq, r_seq, valid_seq = [], [], [], [], []
                 curr_i = idx
+                is_valid = 1.0
                 for k in range(K):
                     st = trajectory[curr_i]
                     s_seq.append(st[9])
@@ -318,21 +345,26 @@ def train_single_run(
                         a_seq.append(act_vec)
                     ns_seq.append(st[10])
                     r_seq.append([st[4]])
+                    valid_seq.append([is_valid])
 
                     done = st[5] or st[6]
-                    if not done and curr_i + 1 < N:
+                    if done or curr_i + 1 >= N:
+                        is_valid = 0.0
+                    else:
                         curr_i += 1
 
                 state_seq_list.append(s_seq)
                 action_seq_list.append(a_seq)
                 next_state_seq_list.append(ns_seq)
                 reward_seq_list.append(r_seq)
+                valid_seq_list.append(valid_seq)
 
             hist_batch = torch.cat(hist_list, dim=0)
             state_seq_batch = torch.tensor(np.array(state_seq_list), dtype=torch.float32)
             action_seq_batch = torch.tensor(np.array(action_seq_list), dtype=torch.float32)
             next_state_seq_batch = torch.tensor(np.array(next_state_seq_list), dtype=torch.float32)
             reward_seq_batch = torch.tensor(np.array(reward_seq_list), dtype=torch.float32)
+            valid_seq_batch = torch.tensor(np.array(valid_seq_list), dtype=torch.float32)
             ep_ids = np.array(ep_ids)
 
             encoder_epochs = 1
@@ -353,6 +385,7 @@ def train_single_run(
                     mb_action = action_seq_batch[mb_idx]
                     mb_next_state = next_state_seq_batch[mb_idx]
                     mb_reward = reward_seq_batch[mb_idx]
+                    mb_valid_mask = valid_seq_batch[mb_idx].to(device)
                     mb_ep_ids = torch.tensor(ep_ids[mb_idx], dtype=torch.long, device=device)
 
                     encoder_optimizer.zero_grad()
@@ -366,6 +399,7 @@ def train_single_run(
                             mb_next_state,
                             mb_reward,
                             ep_ids=mb_ep_ids,
+                            valid_mask=mb_valid_mask,
                         )
 
                     repr_loss = loss_dict["loss"]

@@ -8,8 +8,17 @@ to automatically discover optimal hyperparameters for representation learning en
 SEARCH SPACE (matches the proposal, kept low-dimensional given the small trial budget):
     VAE: encoder_lr, latent_dim, kl_weight (beta)
     CPC: encoder_lr, latent_dim, cpc_temperature
+    ORACLE / CONTEXT_FREE (not in the proposal -- team decision): lr_actor, lr_critic, ent_coef.
+        These two modes have no encoder, so there's nothing in the proposal's search space to
+        tune; oracle/context_free previously always ran with fixed PPO defaults while vae/cpc
+        got BO-tuned encoders, which wasn't a fair comparison. Kept deliberately small (3 PPO
+        hyperparameters) to match the encoder search spaces' dimensionality. lr_actor/lr_critic
+        search range: 1e-4 to 3e-3 (log); ent_coef: 1e-3 to 5e-2 (log) -- narrowed from a wider
+        1e-5/1e-2 and 1e-4/1e-1 range after that wider range let a 30-trial/3-seed BO land on an
+        extreme, unstable combo for oracle.
 hidden_dim, max_history_len, and predict_horizon are intentionally NOT tuned here -- they
-stay fixed at train_single_run()'s defaults.
+stay fixed at train_single_run()'s defaults. CPC's aux_weight/supcon_weight are fixed
+constants (see CPCContextEncoder), not BO-tuned.
 
 OBJECTIVE: the BO score is held-out `eval_mean_return`, averaged over multiple training
 seeds per trial (see trial_seeds below). Linear context-probing R^2 is still computed and
@@ -70,7 +79,7 @@ def run_bayesian_optimization(
     Executes Bayesian Optimization (BO) search over hyperparameter space for VAE or CPC context encoders.
 
     Args:
-        mode: Representation mode ('vae' or 'cpc').
+        mode: Mode to tune ('vae', 'cpc', 'oracle', or 'context_free').
         env_name: Benchmark environment name.
         n_trials: Number of BO trials (default: 30).
         bo_steps: Training step budget per optimization trial (default: 25000).
@@ -90,8 +99,8 @@ def run_bayesian_optimization(
     Returns:
         Dict[str, Any]: Best hyperparameter dictionary found by Bayesian Optimization.
     """
-    if mode not in ["vae", "cpc"]:
-        raise ValueError(f"Bayesian Optimization search is only configured for 'vae' and 'cpc' modes, got '{mode}'.")
+    if mode not in ["vae", "cpc", "oracle", "context_free"]:
+        raise ValueError(f"Bayesian Optimization search is only configured for 'vae', 'cpc', 'oracle', and 'context_free' modes, got '{mode}'.")
 
     trial_seeds = trial_seeds if trial_seeds is not None else [100, 200, 300]  # disjoint from the final benchmark's seeds 0-15 (main.py)
 
@@ -105,20 +114,41 @@ def run_bayesian_optimization(
     def objective(trial: optuna.Trial) -> float:
         # Sample hyperparameters from the proposal's search space only (kept low-dimensional
         # given the small trial budget -- see supervisor feedback on HPO fairness/honesty).
-        latent_dim = trial.suggest_categorical("latent_dim", [4, 8, 16])
-        encoder_lr = trial.suggest_float("encoder_lr", 1e-4, 1e-2, log=True)
 
         # NOT tuned -- fixed at train_single_run() defaults.
+        latent_dim = 8
+        encoder_lr = 3e-4
         hidden_dim = 64
         max_history_len = 25
         predict_horizon = 3
         kl_weight = 1e-3
         cpc_temperature = 0.1
+        lr_actor = 3e-4
+        lr_critic = 3e-4
+        ent_coef = 0.01
 
         if mode == "vae":
+            # Bug fix: latent_dim/encoder_lr used to be sampled unconditionally above (for every
+            # mode), wasting 2 of oracle/context_free's 5 search dimensions on parameters that have
+            # zero effect for them (no encoder). Moved here so each mode only searches its own
+            # relevant dimensions.
+            latent_dim = trial.suggest_categorical("latent_dim", [4, 8, 16])
+            encoder_lr = trial.suggest_float("encoder_lr", 1e-4, 1e-2, log=True)
             kl_weight = trial.suggest_float("kl_weight", 1e-5, 1e-1, log=True)  # beta
         elif mode == "cpc":
+            latent_dim = trial.suggest_categorical("latent_dim", [4, 8, 16])
+            encoder_lr = trial.suggest_float("encoder_lr", 1e-4, 1e-2, log=True)
             cpc_temperature = trial.suggest_float("cpc_temperature", 0.05, 0.5, log=True)
+        elif mode in ("oracle", "context_free"):
+            # No encoder to tune -- tune PPO itself instead (see SEARCH SPACE note in module docstring).
+            # Range narrowed from (1e-5, 1e-2)/(1e-4, 1e-1) after the first 25k/100k full-BO runs
+            # landed oracle on an extreme, value-function-starving combo (lr_actor=0.0097,
+            # lr_critic=6.4e-5) that made context_free implausibly beat oracle -- 30 trials x 3 seeds
+            # isn't enough to reliably cover a full 3-decade log-range, so we tightened it around
+            # commonly-stable PPO values instead.
+            lr_actor = trial.suggest_float("lr_actor", 1e-4, 3e-3, log=True)
+            lr_critic = trial.suggest_float("lr_critic", 1e-4, 3e-3, log=True)
+            ent_coef = trial.suggest_float("ent_coef", 1e-3, 5e-2, log=True)
 
         # Train + evaluate this hyperparameter config once per seed in trial_seeds and average
         # the results, instead of a single fixed training seed (see RELIABILITY note above).
@@ -141,6 +171,9 @@ def run_bayesian_optimization(
                     cpc_temperature=cpc_temperature,
                     predict_horizon=predict_horizon,
                     max_history_len=max_history_len,
+                    lr_actor=lr_actor,
+                    lr_critic=lr_critic,
+                    ent_coef=ent_coef,
                     exp_tag=f"bo_trial_{trial.number}_seed{s}",
                     output_dir=temp_dir,
                     use_bo_config=False,

@@ -1,17 +1,14 @@
 """
-Plotting CLI script for Contextual Reinforcement Learning Results.
+Interactive Plotting CLI script for Contextual Reinforcement Learning Results.
 
-Generates a comparison plot for every metric found across every discovered run --
-no manual run/metric selection needed.
+This script provides an interactive terminal menu with arrow-key navigation,
+spacebar checkbox toggling [x], and multi-metric plot generation.
 
 Usage Examples:
-    # Generate every metric-comparison plot for all runs found under results/:
+    # Launch interactive terminal selection window:
     python scripts/plot_results.py
 
-    # Same, but for a specific results directory:
-    python scripts/plot_results.py --dir results/100k_steps
-
-    # Single-file/single-metric CLI mode:
+    # Non-interactive CLI mode:
     python scripts/plot_results.py --files scripts/results/*/oracle_seed0_results.csv --metric_col mean_return
 """
 
@@ -19,8 +16,18 @@ import argparse
 import glob
 import os
 import sys
-from typing import List
+from typing import List, Dict, Any, Optional
 import pandas as pd
+
+# Bug fix (not in proposal): force the headless 'Agg' backend before any matplotlib.pyplot import
+# happens anywhere downstream (this script's own plotting.py import, plus train/evaluate/probing/
+# bo_search/pilot_runs when invoked through main.py). Without this, matplotlib auto-picks an
+# interactive backend (TkAgg on Windows when tkinter is present), which causes spurious
+# "RuntimeError: main thread is not in main loop" errors from Tk's image garbage collector during
+# long eval loops with many sequential plots. The PNGs still saved correctly either way -- this
+# just removes the noisy, harmless-looking errors.
+import matplotlib
+matplotlib.use("Agg")
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
@@ -50,7 +57,7 @@ def discover_csv_files(results_dir: str) -> List[str]:
 
 def get_available_metrics(csv_files: List[str]) -> List[str]:
     """
-    Extracts common numeric metric column names from the given CSV files.
+    Extracts common numeric metric column names from selected CSV files.
     """
     metrics_set = set()
     for f in csv_files:
@@ -70,12 +77,12 @@ def get_available_metrics(csv_files: List[str]) -> List[str]:
 
 def generate_all_plots(results_dir: str) -> None:
     """
-    Discovers every run CSV and every available metric under results_dir, and generates
-    one comparison plot per metric across all runs.
+    Discovers all result CSVs and metrics under results_dir and plots every metric-comparison
+    chart automatically, with no interactive prompts.
     """
     results_dir = os.path.abspath(results_dir)
     print("\n" + "=" * 65)
-    print("      Contextual RL Plotting CLI")
+    print("      Contextual RL Plotting")
     print("=" * 65)
 
     csv_files = discover_csv_files(results_dir)
@@ -116,15 +123,14 @@ def generate_all_plots(results_dir: str) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Plot results across multiple CSV runs. Defaults to generating every "
-        "metric-comparison plot for every discovered run."
+        description="Plot results across multiple CSV runs via interactive menu or CLI arguments."
     )
     parser.add_argument(
         "--files",
         type=str,
         nargs="+",
         default=None,
-        help="List of CSV file paths to plot (single-metric mode, use with --metric_col).",
+        help="List of CSV file paths to plot.",
     )
     parser.add_argument(
         "--dir",
@@ -136,19 +142,19 @@ def main():
         "--title",
         type=str,
         default=None,
-        help="Custom title for the plot (single-metric mode).",
+        help="Custom title for the plot.",
     )
     parser.add_argument(
         "--output",
         type=str,
         default=None,
-        help="Output file path for the plot image (single-metric mode).",
+        help="Output file path for the plot image.",
     )
     parser.add_argument(
         "--metric_col",
         type=str,
         default=None,
-        help="CSV column name to plot (e.g. 'mean_return', 'value_loss'). Triggers single-metric mode.",
+        help="CSV column name to plot (e.g. 'mean_return', 'value_loss').",
     )
 
     args = parser.parse_args()

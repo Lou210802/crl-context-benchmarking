@@ -1,0 +1,13 @@
+best_eval_mean_return: -1131.864926409411
+best_eval_std_across_seeds: 13.294655724349504
+best_probing_r2: null
+env_name: CARLPendulum
+hyperparameters:
+  ent_coef: 0.028010243828257297
+  lr_actor: 0.0015450261910300806
+  lr_critic: 0.004839336949132856
+mode: context_free
+trial_seeds:
+- 100
+- 200
+- 300

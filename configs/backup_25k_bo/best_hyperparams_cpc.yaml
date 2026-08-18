@@ -1,0 +1,13 @@
+best_eval_mean_return: -1232.2089675061345
+best_eval_std_across_seeds: 37.836239458617705
+best_probing_r2: 0.07230731693945232
+env_name: CARLPendulum
+hyperparameters:
+  cpc_temperature: 0.21480983527194464
+  encoder_lr: 0.0010099586798782208
+  latent_dim: 16
+mode: cpc
+trial_seeds:
+- 100
+- 200
+- 300

@@ -1,0 +1,369 @@
+best_params:
+  ent_coef: 0.012795883391044847
+  lr_actor: 0.0026357097684039195
+  lr_critic: 0.0034747010419733074
+trial_seeds:
+- 100
+- 200
+- 300
+trials:
+- eval_mean_return: -1251.14343476285
+  eval_std_across_seeds: 25.21326719294581
+  params:
+    ent_coef: 0.015702970884055395
+    lr_actor: 0.0001329291894316216
+    lr_critic: 0.0071144760093434225
+  per_seed_returns:
+  - -1277.1566467516125
+  - -1259.256674064661
+  - -1217.0169834722765
+  probing_r2: null
+  trial: 0
+- eval_mean_return: -1261.4068637091666
+  eval_std_across_seeds: 24.82693343434649
+  params:
+    ent_coef: 0.00029375384576328325
+    lr_actor: 0.0006251373574521745
+    lr_critic: 2.9380279387035334e-05
+  per_seed_returns:
+  - -1230.1205489894376
+  - -1290.850014513731
+  - -1263.2500276243313
+  probing_r2: null
+  trial: 1
+- eval_mean_return: -1304.3109874402173
+  eval_std_across_seeds: 18.140084260125054
+  params:
+    ent_coef: 0.006358358856676255
+    lr_actor: 1.493656855461762e-05
+    lr_critic: 0.003967605077052989
+  per_seed_returns:
+  - -1329.3058132681995
+  - -1296.817372765392
+  - -1286.8097762870602
+  probing_r2: null
+  trial: 2
+- eval_mean_return: -1292.795497805501
+  eval_std_across_seeds: 47.238681883883324
+  params:
+    ent_coef: 0.0812324508558869
+    lr_actor: 0.001331121608073689
+    lr_critic: 1.1527987128232396e-05
+  per_seed_returns:
+  - -1329.928684233874
+  - -1322.3234411671758
+  - -1226.1343680154532
+  probing_r2: null
+  trial: 3
+- eval_mean_return: -1219.2626185258541
+  eval_std_across_seeds: 19.13895678784821
+  params:
+    ent_coef: 0.0003511356313970409
+    lr_actor: 0.00314288089084011
+    lr_critic: 4.335281794951564e-05
+  per_seed_returns:
+  - -1219.8114099455065
+  - -1195.5527023103089
+  - -1242.4237433217465
+  probing_r2: null
+  trial: 4
+- eval_mean_return: -1309.626763148505
+  eval_std_across_seeds: 33.706610363332786
+  params:
+    ent_coef: 0.0037520558551242854
+    lr_actor: 3.5498788321965036e-05
+    lr_critic: 8.17949947521167e-05
+  per_seed_returns:
+  - -1314.8171744741499
+  - -1348.0681033439935
+  - -1265.9950116273715
+  probing_r2: null
+  trial: 5
+- eval_mean_return: -1301.862711816248
+  eval_std_across_seeds: 13.323046059963488
+  params:
+    ent_coef: 0.006847920095574782
+    lr_actor: 0.00019762189340280086
+    lr_critic: 7.476312062252303e-05
+  per_seed_returns:
+  - -1297.1887471687048
+  - -1320.0069986328483
+  - -1288.392389647191
+  probing_r2: null
+  trial: 6
+- eval_mean_return: -1317.0267120527103
+  eval_std_across_seeds: 22.768448456398364
+  params:
+    ent_coef: 0.001256277350380704
+    lr_actor: 2.621087878265438e-05
+    lr_critic: 7.52374288453485e-05
+  per_seed_returns:
+  - -1320.6178160723298
+  - -1342.942734278366
+  - -1287.5195858074353
+  probing_r2: null
+  trial: 7
+- eval_mean_return: -1248.396892200224
+  eval_std_across_seeds: 12.865674411929332
+  params:
+    ent_coef: 0.0003972110727381913
+    lr_actor: 0.00023345864076016249
+    lr_critic: 0.0022673986523780395
+  per_seed_returns:
+  - -1262.331227472797
+  - -1231.2973954884335
+  - -1251.5620536394417
+  probing_r2: null
+  trial: 8
+- eval_mean_return: -1248.0971568817893
+  eval_std_across_seeds: 28.5462779593941
+  params:
+    ent_coef: 0.000137832374550072
+    lr_actor: 0.0003489018845491386
+    lr_critic: 0.0005987474910461401
+  per_seed_returns:
+  - -1217.2170193878933
+  - -1286.0571681080387
+  - -1241.017283149436
+  probing_r2: null
+  trial: 9
+- eval_mean_return: -1165.848223450128
+  eval_std_across_seeds: 47.18212497131776
+  params:
+    ent_coef: 0.08102356207766637
+    lr_actor: 0.00808856422304903
+    lr_critic: 0.0005449179597947343
+  per_seed_returns:
+  - -1175.2176752276719
+  - -1218.3770397105254
+  - -1103.9499554121867
+  probing_r2: null
+  trial: 10
+- eval_mean_return: -1235.8842262921235
+  eval_std_across_seeds: 19.297473110561945
+  params:
+    ent_coef: 0.052843842057388506
+    lr_actor: 0.007483618211510521
+    lr_critic: 0.0004975529116456154
+  per_seed_returns:
+  - -1234.0644184969365
+  - -1260.3760072857142
+  - -1213.2122530937195
+  probing_r2: null
+  trial: 11
+- eval_mean_return: -1257.4902456248644
+  eval_std_across_seeds: 106.49157932468096
+  params:
+    ent_coef: 0.0014105767236254668
+    lr_actor: 0.009146926100191296
+    lr_critic: 0.0003528332398245303
+  per_seed_returns:
+  - -1154.3780856322962
+  - -1404.1073404844851
+  - -1213.9853107578122
+  probing_r2: null
+  trial: 12
+- eval_mean_return: -1454.8854135197898
+  eval_std_across_seeds: 66.51955697713255
+  params:
+    ent_coef: 0.021240029415410897
+    lr_actor: 0.0023891013957967207
+    lr_critic: 0.0014293584268844559
+  per_seed_returns:
+  - -1515.0647400170565
+  - -1487.4145468693227
+  - -1362.1769536729903
+  probing_r2: null
+  trial: 13
+- eval_mean_return: -1198.8983545028798
+  eval_std_across_seeds: 37.493850583687426
+  params:
+    ent_coef: 0.0012226355501773268
+    lr_actor: 0.003382883593657874
+    lr_critic: 0.0002009411184641339
+  per_seed_returns:
+  - -1159.4286274962128
+  - -1187.969090187177
+  - -1249.2973458252497
+  probing_r2: null
+  trial: 14
+- eval_mean_return: -1297.8644668363033
+  eval_std_across_seeds: 115.55299989745703
+  params:
+    ent_coef: 0.0016761830457754175
+    lr_actor: 0.004053491250840184
+    lr_critic: 0.00021934831518713847
+  per_seed_returns:
+  - -1461.2746773421763
+  - -1217.4127588756382
+  - -1214.9059642910956
+  probing_r2: null
+  trial: 15
+- eval_mean_return: -1252.4410813748993
+  eval_std_across_seeds: 51.749118278564666
+  params:
+    ent_coef: 0.0310593250118705
+    lr_actor: 0.0013225084675275189
+    lr_critic: 0.00018805524366890682
+  per_seed_returns:
+  - -1193.5762293916662
+  - -1319.5318897621705
+  - -1244.2151249708609
+  probing_r2: null
+  trial: 16
+- eval_mean_return: -1468.3679249674085
+  eval_std_across_seeds: 2.2737367544323206e-13
+  params:
+    ent_coef: 0.010726404594127322
+    lr_actor: 0.009950678191115983
+    lr_critic: 0.0009377527017811651
+  per_seed_returns:
+  - -1468.3679249674083
+  - -1468.3679249674083
+  - -1468.3679249674083
+  probing_r2: null
+  trial: 17
+- eval_mean_return: -1245.8182710109588
+  eval_std_across_seeds: 34.53642110727266
+  params:
+    ent_coef: 0.00010731368981434618
+    lr_actor: 0.0012690764532532696
+    lr_critic: 0.00018561860486787592
+  per_seed_returns:
+  - -1196.9782717796043
+  - -1269.8675542131066
+  - -1270.6089870401659
+  probing_r2: null
+  trial: 18
+- eval_mean_return: -1513.078360959391
+  eval_std_across_seeds: 63.158271319225136
+  params:
+    ent_coef: 0.003506801971686396
+    lr_actor: 0.0048027126378562155
+    lr_critic: 0.0013583829418199655
+  per_seed_returns:
+  - -1468.46953234002
+  - -1468.3679249674083
+  - -1602.3976255707444
+  probing_r2: null
+  trial: 19
+- eval_mean_return: -1232.0768010998765
+  eval_std_across_seeds: 74.49852036256553
+  params:
+    ent_coef: 0.0006094596032592435
+    lr_actor: 0.0021005485465150045
+    lr_critic: 0.000339239056380661
+  per_seed_returns:
+  - -1144.6560312125832
+  - -1326.7111592639237
+  - -1224.8632128231227
+  probing_r2: null
+  trial: 20
+- eval_mean_return: -1341.3138595515086
+  eval_std_across_seeds: 75.29525483678039
+  params:
+    ent_coef: 0.00022805554072591295
+    lr_actor: 0.0034723816578173315
+    lr_critic: 2.0577391086337332e-05
+  per_seed_returns:
+  - -1441.6616455435753
+  - -1321.9912953156977
+  - -1260.2886377952527
+  probing_r2: null
+  trial: 21
+- eval_mean_return: -1210.6415428206324
+  eval_std_across_seeds: 24.903000326741832
+  params:
+    ent_coef: 0.0005506405430207521
+    lr_actor: 0.0050967975301627905
+    lr_critic: 4.117338297401931e-05
+  per_seed_returns:
+  - -1178.2974068704993
+  - -1214.7458110732957
+  - -1238.8814105181023
+  probing_r2: null
+  trial: 22
+- eval_mean_return: -1280.3671430605057
+  eval_std_across_seeds: 114.40641714159757
+  params:
+    ent_coef: 0.0007381695850608393
+    lr_actor: 0.005826895810784883
+    lr_critic: 0.00010069508238219981
+  per_seed_returns:
+  - -1437.3227367714048
+  - -1167.8753986701079
+  - -1235.9032937400043
+  probing_r2: null
+  trial: 23
+- eval_mean_return: -1256.760306787479
+  eval_std_across_seeds: 43.35341208242382
+  params:
+    ent_coef: 0.0026119561701655773
+    lr_actor: 0.0007132081660520816
+    lr_critic: 0.000142857718301098
+  per_seed_returns:
+  - -1195.4505295034148
+  - -1287.7482356920839
+  - -1287.082155166939
+  probing_r2: null
+  trial: 24
+- eval_mean_return: -1266.6204361213372
+  eval_std_across_seeds: 39.09712572627631
+  params:
+    ent_coef: 0.000700011023445116
+    lr_actor: 0.0020138063166509866
+    lr_critic: 3.798895757932496e-05
+  per_seed_returns:
+  - -1300.7953661734239
+  - -1211.8907942581923
+  - -1287.1751479323952
+  probing_r2: null
+  trial: 25
+- eval_mean_return: -1257.7234278412536
+  eval_std_across_seeds: 23.35106501707352
+  params:
+    ent_coef: 0.08872754604813361
+    lr_actor: 0.004610337528971795
+    lr_critic: 1.566140115710413e-05
+  per_seed_returns:
+  - -1290.688717430085
+  - -1242.9365477388724
+  - -1239.5450183548032
+  probing_r2: null
+  trial: 26
+- eval_mean_return: -1243.690072664863
+  eval_std_across_seeds: 37.44952938369331
+  params:
+    ent_coef: 0.00018774151557247927
+    lr_actor: 0.0007708246719387617
+    lr_critic: 0.0006404940912884253
+  per_seed_returns:
+  - -1240.3666793383659
+  - -1199.576042472187
+  - -1291.127496184036
+  probing_r2: null
+  trial: 27
+- eval_mean_return: -1252.8171453134466
+  eval_std_across_seeds: 53.61086665799046
+  params:
+    ent_coef: 0.033007893429195655
+    lr_actor: 0.006950782404256301
+    lr_critic: 0.00031946606988049936
+  per_seed_returns:
+  - -1214.6486222019419
+  - -1328.633764640987
+  - -1215.1690490974113
+  probing_r2: null
+  trial: 28
+- eval_mean_return: -1150.504256937346
+  eval_std_across_seeds: 50.26973210290099
+  params:
+    ent_coef: 0.012795883391044847
+    lr_actor: 0.0026357097684039195
+    lr_critic: 0.0034747010419733074
+  per_seed_returns:
+  - -1114.0722242373972
+  - -1221.588970959559
+  - -1115.8515756150823
+  probing_r2: null
+  trial: 29

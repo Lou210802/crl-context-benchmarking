@@ -1,0 +1,369 @@
+best_params:
+  cpc_temperature: 0.21480983527194464
+  encoder_lr: 0.0010099586798782208
+  latent_dim: 16
+trial_seeds:
+- 100
+- 200
+- 300
+trials:
+- eval_mean_return: -1310.8542046850005
+  eval_std_across_seeds: 75.28592842355545
+  params:
+    cpc_temperature: 0.07161246859115125
+    encoder_lr: 0.0015751320499779737
+    latent_dim: 8
+  per_seed_returns:
+  - -1384.8526472322642
+  - -1207.5592112737008
+  - -1340.150755549036
+  probing_r2: 0.032939205977525705
+  trial: 0
+- eval_mean_return: -1252.1187531341177
+  eval_std_across_seeds: 15.013923540796267
+  params:
+    cpc_temperature: 0.2552951604697377
+    encoder_lr: 0.0015930522616241021
+    latent_dim: 16
+  per_seed_returns:
+  - -1272.978206820041
+  - -1245.1225731565617
+  - -1238.2554794257508
+  probing_r2: 0.08851072616620193
+  trial: 1
+- eval_mean_return: -1362.1812521697486
+  eval_std_across_seeds: 53.71830882564953
+  params:
+    cpc_temperature: 0.07599674150654905
+    encoder_lr: 0.00026587543983272726
+    latent_dim: 8
+  per_seed_returns:
+  - -1392.1310309816618
+  - -1286.7436212077737
+  - -1407.669104319811
+  probing_r2: 0.025681865459663656
+  trial: 2
+- eval_mean_return: -1294.1559695457925
+  eval_std_across_seeds: 66.85052315574166
+  params:
+    cpc_temperature: 0.09776854331372624
+    encoder_lr: 0.0007309539835912913
+    latent_dim: 16
+  per_seed_returns:
+  - -1387.8943948104977
+  - -1257.9319150129916
+  - -1236.6415988138876
+  probing_r2: 0.07793139353062496
+  trial: 3
+- eval_mean_return: -1328.2066613071909
+  eval_std_across_seeds: 38.485162408954984
+  params:
+    cpc_temperature: 0.1429025532903468
+    encoder_lr: 0.0005404103854647331
+    latent_dim: 4
+  per_seed_returns:
+  - -1310.8701743543147
+  - -1292.1955331053584
+  - -1381.5542764618992
+  probing_r2: 0.02221120753207778
+  trial: 4
+- eval_mean_return: -1315.4029195929568
+  eval_std_across_seeds: 74.7988837146717
+  params:
+    cpc_temperature: 0.05564426587452864
+    encoder_lr: 0.0015304852121831463
+    latent_dim: 4
+  per_seed_returns:
+  - -1254.4718926126138
+  - -1270.982740385644
+  - -1420.7541257806122
+  probing_r2: 0.03804348883369863
+  trial: 5
+- eval_mean_return: -1294.5282944879184
+  eval_std_across_seeds: 40.879670111358344
+  params:
+    cpc_temperature: 0.4619575159813623
+    encoder_lr: 0.007902619549708232
+    latent_dim: 4
+  per_seed_returns:
+  - -1243.1388134622946
+  - -1297.2869919122197
+  - -1343.159078089241
+  probing_r2: 0.08984473867046601
+  trial: 6
+- eval_mean_return: -1290.818392429136
+  eval_std_across_seeds: 13.421900420127695
+  params:
+    cpc_temperature: 0.13775979824755383
+    encoder_lr: 0.0023359635026261607
+    latent_dim: 4
+  per_seed_returns:
+  - -1284.4271647252376
+  - -1309.492548611015
+  - -1278.5354639511556
+  probing_r2: 0.03470314842068739
+  trial: 7
+- eval_mean_return: -1359.019889999243
+  eval_std_across_seeds: 62.10620044358616
+  params:
+    cpc_temperature: 0.09072980676745125
+    encoder_lr: 0.006586289317583112
+    latent_dim: 8
+  per_seed_returns:
+  - -1420.230779635161
+  - -1273.8645556965844
+  - -1382.9643346659839
+  probing_r2: 0.10427179092566576
+  trial: 8
+- eval_mean_return: -1307.282546533784
+  eval_std_across_seeds: 29.202675147795897
+  params:
+    cpc_temperature: 0.0765287218275009
+    encoder_lr: 0.0012399967836846098
+    latent_dim: 4
+  per_seed_returns:
+  - -1273.4374815915712
+  - -1303.7092736297752
+  - -1344.7008843800054
+  probing_r2: 0.027089766255926295
+  trial: 9
+- eval_mean_return: -1271.0954322090683
+  eval_std_across_seeds: 32.44473904908014
+  params:
+    cpc_temperature: 0.4661300646312405
+    encoder_lr: 0.00010280029617905622
+    latent_dim: 16
+  per_seed_returns:
+  - -1302.606301406864
+  - -1284.2240845741703
+  - -1226.4559106461704
+  probing_r2: 0.09637184942213066
+  trial: 10
+- eval_mean_return: -1296.9961977340902
+  eval_std_across_seeds: 15.682203372391719
+  params:
+    cpc_temperature: 0.42708556004075526
+    encoder_lr: 0.00011736252628445406
+    latent_dim: 16
+  per_seed_returns:
+  - -1316.333167600818
+  - -1296.7329481087625
+  - -1277.9224774926902
+  probing_r2: 0.08558180998050811
+  trial: 11
+- eval_mean_return: -1286.7928732108169
+  eval_std_across_seeds: 39.80560290512803
+  params:
+    cpc_temperature: 0.27773518613197495
+    encoder_lr: 0.00011284242896735434
+    latent_dim: 16
+  per_seed_returns:
+  - -1342.1915007632226
+  - -1267.7522592760156
+  - -1250.4348595932126
+  probing_r2: 0.10540748218005387
+  trial: 12
+- eval_mean_return: -1291.821086282966
+  eval_std_across_seeds: 42.048952304076955
+  params:
+    cpc_temperature: 0.2794886601079541
+    encoder_lr: 0.004144912356017651
+    latent_dim: 16
+  per_seed_returns:
+  - -1350.0919861495495
+  - -1252.4119682433084
+  - -1272.9593044560402
+  probing_r2: 0.11335966576157841
+  trial: 13
+- eval_mean_return: -1278.3168074356236
+  eval_std_across_seeds: 34.942901687590805
+  params:
+    cpc_temperature: 0.2624549276756876
+    encoder_lr: 0.0002891517990141391
+    latent_dim: 16
+  per_seed_returns:
+  - -1327.653365975432
+  - -1251.2118170402478
+  - -1256.085239291191
+  probing_r2: 0.0771258503654474
+  trial: 14
+- eval_mean_return: -1308.405561042763
+  eval_std_across_seeds: 92.31421614058304
+  params:
+    cpc_temperature: 0.3450374939764788
+    encoder_lr: 0.00020898142970091302
+    latent_dim: 16
+  per_seed_returns:
+  - -1438.8734466221183
+  - -1239.1133086524437
+  - -1247.2299278537278
+  probing_r2: 0.07935780678298669
+  trial: 15
+- eval_mean_return: -1316.220997802727
+  eval_std_across_seeds: 60.36219090976933
+  params:
+    cpc_temperature: 0.2154283321418891
+    encoder_lr: 0.0005959206131645767
+    latent_dim: 16
+  per_seed_returns:
+  - -1401.0732108544557
+  - -1281.8860959034414
+  - -1265.7036866502835
+  probing_r2: 0.08118715475934
+  trial: 16
+- eval_mean_return: -1281.1231704413324
+  eval_std_across_seeds: 15.257709680012804
+  params:
+    cpc_temperature: 0.16296178976527645
+    encoder_lr: 0.00349404333081963
+    latent_dim: 16
+  per_seed_returns:
+  - -1296.6093658335508
+  - -1286.3927539149458
+  - -1260.3673915755003
+  probing_r2: 0.13338151210727903
+  trial: 17
+- eval_mean_return: -1245.0446942502012
+  eval_std_across_seeds: 29.19708537327018
+  params:
+    cpc_temperature: 0.39018272025550377
+    encoder_lr: 0.0008883116653692045
+    latent_dim: 16
+  per_seed_returns:
+  - -1285.4830675098115
+  - -1217.5965265353211
+  - -1232.0544887054712
+  probing_r2: 0.07917134787862007
+  trial: 18
+- eval_mean_return: -1291.936998565371
+  eval_std_across_seeds: 56.420995996371346
+  params:
+    cpc_temperature: 0.20662230598629097
+    encoder_lr: 0.0009080010642498897
+    latent_dim: 16
+  per_seed_returns:
+  - -1366.1105187859387
+  - -1229.3804552325978
+  - -1280.320021677576
+  probing_r2: 0.07766675746151688
+  trial: 19
+- eval_mean_return: -1335.5268430349106
+  eval_std_across_seeds: 49.000948356465166
+  params:
+    cpc_temperature: 0.3603819739231232
+    encoder_lr: 0.0004250889207122921
+    latent_dim: 8
+  per_seed_returns:
+  - -1369.9103070830927
+  - -1266.229713403806
+  - -1370.4405086178333
+  probing_r2: 0.032117985318724555
+  trial: 20
+- eval_mean_return: -1287.273104386474
+  eval_std_across_seeds: 17.78996435829726
+  params:
+    cpc_temperature: 0.4984516681509273
+    encoder_lr: 0.0023793537960598516
+    latent_dim: 16
+  per_seed_returns:
+  - -1312.1328252109001
+  - -1271.493623368442
+  - -1278.19286458008
+  probing_r2: 0.10550297659700218
+  trial: 21
+- eval_mean_return: -1281.066573430101
+  eval_std_across_seeds: 21.312927159892745
+  params:
+    cpc_temperature: 0.3573514006434948
+    encoder_lr: 0.0001617650372933002
+    latent_dim: 16
+  per_seed_returns:
+  - -1309.8638936948962
+  - -1258.9609647861682
+  - -1274.3748618092388
+  probing_r2: 0.08372329543889971
+  trial: 22
+- eval_mean_return: -1256.1579348005043
+  eval_std_across_seeds: 10.851274625133463
+  params:
+    cpc_temperature: 0.3864846141830225
+    encoder_lr: 0.0011901977854028483
+    latent_dim: 16
+  per_seed_returns:
+  - -1258.1641164663247
+  - -1268.3308322731405
+  - -1241.9788556620479
+  probing_r2: 0.09181040216532742
+  trial: 23
+- eval_mean_return: -1232.2089675061345
+  eval_std_across_seeds: 37.836239458617705
+  params:
+    cpc_temperature: 0.21480983527194464
+    encoder_lr: 0.0010099586798782208
+    latent_dim: 16
+  per_seed_returns:
+  - -1276.2798954276368
+  - -1236.4544188387692
+  - -1183.892588251998
+  probing_r2: 0.07230731693945232
+  trial: 24
+- eval_mean_return: -1284.841735942615
+  eval_std_across_seeds: 28.946419756739292
+  params:
+    cpc_temperature: 0.20662771356951895
+    encoder_lr: 0.002117862317456978
+    latent_dim: 16
+  per_seed_returns:
+  - -1322.852480274299
+  - -1278.9980624366551
+  - -1252.6746651168912
+  probing_r2: 0.09957897724466946
+  trial: 25
+- eval_mean_return: -1259.2446040956925
+  eval_std_across_seeds: 39.5014496218658
+  params:
+    cpc_temperature: 0.23586462970888455
+    encoder_lr: 0.000893102308496119
+    latent_dim: 16
+  per_seed_returns:
+  - -1304.1717150600628
+  - -1208.02843466904
+  - -1265.5336625579744
+  probing_r2: 0.08499775624694844
+  trial: 26
+- eval_mean_return: -1261.7404891532535
+  eval_std_across_seeds: 21.71069682424059
+  params:
+    cpc_temperature: 0.2986871292966486
+    encoder_lr: 0.00040972127413567015
+    latent_dim: 16
+  per_seed_returns:
+  - -1288.5546996187418
+  - -1235.3803872507997
+  - -1261.286380590219
+  probing_r2: 0.08933344409774208
+  trial: 27
+- eval_mean_return: -1340.057066117103
+  eval_std_across_seeds: 40.978208431524244
+  params:
+    cpc_temperature: 0.17663702397785788
+    encoder_lr: 0.004492430046002149
+    latent_dim: 8
+  per_seed_returns:
+  - -1283.6210878865793
+  - -1379.6792483322322
+  - -1356.8708621324972
+  probing_r2: 0.05639828528937113
+  trial: 28
+- eval_mean_return: -1274.1048949914675
+  eval_std_across_seeds: 10.445211025695647
+  params:
+    cpc_temperature: 0.3096204141244211
+    encoder_lr: 0.0018140837457893864
+    latent_dim: 16
+  per_seed_returns:
+  - -1261.4992061851547
+  - -1287.0767803560943
+  - -1273.7386984331533
+  probing_r2: 0.09921549795850848
+  trial: 29

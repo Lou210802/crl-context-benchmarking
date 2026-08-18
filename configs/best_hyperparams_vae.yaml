@@ -1,11 +1,11 @@
-best_eval_mean_return: -1241.3340099367235
-best_eval_std_across_seeds: 18.193251342489898
-best_probing_r2: 0.025454030532613154
+best_eval_mean_return: -852.0623684620911
+best_eval_std_across_seeds: 23.43378628550603
+best_probing_r2: 0.13984992194803306
 env_name: CARLPendulum
 hyperparameters:
-  encoder_lr: 0.0018158532922746594
-  kl_weight: 9.745091111746733e-05
-  latent_dim: 4
+  encoder_lr: 0.0007466746787377672
+  kl_weight: 0.005906109797507833
+  latent_dim: 16
 mode: vae
 trial_seeds:
 - 100

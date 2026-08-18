@@ -31,6 +31,8 @@ class CPCContextEncoder(nn.Module):
         hidden_dim: int = 64,
         predict_horizon: int = 3,
         temperature: float = 0.1,
+        aux_weight: float = 1.0,  # Not in the proposal. Matches colleague's lambda_aux=1.0 (his config that reproduced good cpc scores). We first tried down-weighting this to 0.1 based on our own loss curves (aux_dyn_loss started large and shrank fast) -- that made held-out eval worse on a 200k/16-seed run, so reverted.
+        supcon_weight: float = 0.1,  # Not in the proposal. Matches colleague's lambda_supcon=0.1 -- down-weighting the supervised context-contrastive term (not aux_dyn_loss) is what he actually did.
         device: Optional[torch.device] = None,
     ) -> None:
         """
@@ -43,6 +45,8 @@ class CPCContextEncoder(nn.Module):
             hidden_dim: Hidden dimension of GRU recurrent backbone (default: 64).
             predict_horizon: Maximum future prediction horizon steps K (default: 3).
             temperature: Softmax temperature parameter tau for InfoNCE score scaling (default: 0.1).
+            aux_weight: Weight applied to the auxiliary dynamics MSE loss term (default: 1.0).
+            supcon_weight: Weight applied to the supervised context-contrastive loss term (default: 0.1).
             device: Computing device (CPU/GPU).
         """
         super().__init__()
@@ -54,6 +58,8 @@ class CPCContextEncoder(nn.Module):
         self.hidden_dim = int(hidden_dim)
         self.predict_horizon = max(1, int(predict_horizon))
         self.temperature = float(temperature)
+        self.aux_weight = float(aux_weight)
+        self.supcon_weight = float(supcon_weight)
 
         # -------------------------------------------------------------
         # 1. Recurrent GRU Backbone (identical architecture to VAE backbone)
@@ -126,11 +132,18 @@ class CPCContextEncoder(nn.Module):
         target_reward: torch.Tensor,
         pos_history_sequence: Optional[torch.Tensor] = None,
         ep_ids: Optional[torch.Tensor] = None,
+        valid_mask: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         """
         Computes Multi-Step or Inter-Instance InfoNCE contrastive predictive loss.
         Applies false-negative masking to ignore distractors from the same environment context episode,
         and detaches target embeddings for stable InfoNCE gradients.
+
+        Args (new):
+            valid_mask: Optional (batch_size, horizon, 1) mask marking which per-k horizon steps are
+                real vs. repeated padding (from train.py's horizon loop hitting an episode end or
+                rollout-buffer boundary before predict_horizon steps). Not in the proposal -- bug fix
+                matching colleague's pushed main branch.
         """
         history_sequence = history_sequence.to(self.device)
         batch_size = history_sequence.size(0)
@@ -198,20 +211,38 @@ class CPCContextEncoder(nn.Module):
             pred_k = F.normalize(pred_k, p=2, dim=-1)
 
             logits = torch.matmul(pred_k, target_e_k.T) / self.temperature
+            if neg_same_ep_mask is not None:
+                # Bug fix: neg_same_ep_mask was computed above but never applied here, contradicting
+                # this method's own docstring. Without this, same-context transitions elsewhere in the
+                # batch get treated as InfoNCE negatives, actively penalizing the encoder for making
+                # same-context representations similar.
+                logits = logits.masked_fill(neg_same_ep_mask, -1e9)
             labels = torch.arange(batch_size, device=self.device, dtype=torch.long)
-            loss_k = F.cross_entropy(logits, labels)
-            total_infonce_loss = total_infonce_loss + loss_k
+            loss_k = F.cross_entropy(logits, labels, reduction="none")
 
             # Auxiliary Dynamics MSE Loss for continuous parameter regression
             act_k = action[:, k, :] if action.shape[1] > k else action[:, 0, :]
             dyn_pred_k = self.dyn_decoder(torch.cat([curr_s_k, act_k, z_t], dim=-1))
             dyn_target_k = torch.cat([delta_s_k, target_r_k], dim=-1)
-            aux_loss_k = F.mse_loss(dyn_pred_k, dyn_target_k)
+            aux_loss_k = F.mse_loss(dyn_pred_k, dyn_target_k, reduction="none").mean(dim=-1)
+
+            # Bug fix: mask out horizon steps that are just repeated padding (episode/buffer boundary
+            # hit before predict_horizon steps -- see valid_mask docstring above), instead of averaging
+            # them in as if they were genuine k-step-ahead predictions.
+            if valid_mask is not None:
+                mask_k = valid_mask[:, k].squeeze(-1)
+                loss_k = (loss_k * mask_k).sum() / (mask_k.sum() + 1e-8)
+                aux_loss_k = (aux_loss_k * mask_k).sum() / (mask_k.sum() + 1e-8)
+            else:
+                loss_k = loss_k.mean()
+                aux_loss_k = aux_loss_k.mean()
+
+            total_infonce_loss = total_infonce_loss + loss_k
             total_aux_loss = total_aux_loss + aux_loss_k
 
         mean_infonce_loss = total_infonce_loss / float(eval_horizon)
         mean_aux_loss = total_aux_loss / float(eval_horizon)
-        combined_loss = supcon_loss + mean_infonce_loss + mean_aux_loss
+        combined_loss = self.supcon_weight * supcon_loss + mean_infonce_loss + self.aux_weight * mean_aux_loss
 
         return {
             "loss": combined_loss,

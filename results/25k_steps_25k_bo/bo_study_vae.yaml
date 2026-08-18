@@ -1,0 +1,369 @@
+best_params:
+  encoder_lr: 0.0018158532922746594
+  kl_weight: 9.745091111746733e-05
+  latent_dim: 4
+trial_seeds:
+- 100
+- 200
+- 300
+trials:
+- eval_mean_return: -1309.5448914844544
+  eval_std_across_seeds: 36.81961801651306
+  params:
+    encoder_lr: 0.0015751320499779737
+    kl_weight: 4.207988669606632e-05
+    latent_dim: 8
+  per_seed_returns:
+  - -1257.4757071226836
+  - -1335.9350624158978
+  - -1335.2239049147815
+  probing_r2: 0.03302870048227192
+  trial: 0
+- eval_mean_return: -1312.5332631697722
+  eval_std_across_seeds: 74.97078349279303
+  params:
+    encoder_lr: 0.0015930522616241021
+    kl_weight: 0.006796578090758156
+    latent_dim: 16
+  per_seed_returns:
+  - -1207.197799394792
+  - -1354.748358080536
+  - -1375.6536320339887
+  probing_r2: 0.07371400849429667
+  trial: 1
+- eval_mean_return: -1297.0268275203648
+  eval_std_across_seeds: 32.517464627109774
+  params:
+    encoder_lr: 0.00026587543983272726
+    kl_weight: 5.3370327626039544e-05
+    latent_dim: 8
+  per_seed_returns:
+  - -1297.8660971954464
+  - -1256.7882276225369
+  - -1336.4261577431112
+  probing_r2: 0.03610723215837754
+  trial: 2
+- eval_mean_return: -1280.5198596473783
+  eval_std_across_seeds: 17.214163168197235
+  params:
+    encoder_lr: 0.0007309539835912913
+    kl_weight: 0.0001461896279370495
+    latent_dim: 16
+  per_seed_returns:
+  - -1268.0325857866555
+  - -1304.8616211771964
+  - -1268.665371978283
+  probing_r2: 0.09712162425714908
+  trial: 3
+- eval_mean_return: -1339.813219417818
+  eval_std_across_seeds: 17.26474826440962
+  params:
+    encoder_lr: 0.0005404103854647331
+    kl_weight: 0.0006672367170464204
+    latent_dim: 4
+  per_seed_returns:
+  - -1331.7882206089794
+  - -1323.8555699860676
+  - -1363.7958676584065
+  probing_r2: 0.023071428276600397
+  trial: 4
+- eval_mean_return: -1308.95536061991
+  eval_std_across_seeds: 29.435574519892793
+  params:
+    encoder_lr: 0.0015304852121831463
+    kl_weight: 1.5339162591163613e-05
+    latent_dim: 4
+  per_seed_returns:
+  - -1346.185534414649
+  - -1306.4683607257903
+  - -1274.212186719291
+  probing_r2: 0.028547734847967104
+  trial: 5
+- eval_mean_return: -1353.0973077137644
+  eval_std_across_seeds: 27.94441747371366
+  params:
+    encoder_lr: 0.007902619549708232
+    kl_weight: 0.07286653737491042
+    latent_dim: 4
+  per_seed_returns:
+  - -1324.6201932499184
+  - -1343.6055854324252
+  - -1391.0661444589496
+  probing_r2: 0.04104555368693735
+  trial: 6
+- eval_mean_return: -1281.9337881544373
+  eval_std_across_seeds: 29.870812819434487
+  params:
+    encoder_lr: 0.0023359635026261607
+    kl_weight: 0.00057624872164786
+    latent_dim: 4
+  per_seed_returns:
+  - -1256.6204083417774
+  - -1323.8790900044144
+  - -1265.3018661171197
+  probing_r2: 0.03760684609494363
+  trial: 7
+- eval_mean_return: -1335.1286303326333
+  eval_std_across_seeds: 72.68337280683579
+  params:
+    encoder_lr: 0.006586289317583112
+    kl_weight: 0.00010842262717330161
+    latent_dim: 8
+  per_seed_returns:
+  - -1330.5101020022762
+  - -1248.5092100314796
+  - -1426.366578964144
+  probing_r2: 0.05469488017976854
+  trial: 8
+- eval_mean_return: -1255.7972696754928
+  eval_std_across_seeds: 43.89811550040192
+  params:
+    encoder_lr: 0.0012399967836846098
+    kl_weight: 5.4880470007660426e-05
+    latent_dim: 4
+  per_seed_returns:
+  - -1217.0010842192453
+  - -1317.1680774964393
+  - -1233.2226473107935
+  probing_r2: 0.045181053056040484
+  trial: 9
+- eval_mean_return: -1330.2581816697493
+  eval_std_across_seeds: 25.398517887450712
+  params:
+    encoder_lr: 0.00010280029617905622
+    kl_weight: 0.07553503645583182
+    latent_dim: 4
+  per_seed_returns:
+  - -1344.8963448282332
+  - -1294.5327592344954
+  - -1351.3454409465194
+  probing_r2: 0.02272937253284152
+  trial: 10
+- eval_mean_return: -1303.792413475737
+  eval_std_across_seeds: 29.383416877850795
+  params:
+    encoder_lr: 0.0005563750857229192
+    kl_weight: 0.00030186693438857826
+    latent_dim: 16
+  per_seed_returns:
+  - -1263.974527671188
+  - -1313.4067092899234
+  - -1333.9960034660994
+  probing_r2: 0.05933723238713528
+  trial: 11
+- eval_mean_return: -1296.4887727582827
+  eval_std_across_seeds: 32.53427417399064
+  params:
+    encoder_lr: 0.000638956383422657
+    kl_weight: 0.003217618717445625
+    latent_dim: 16
+  per_seed_returns:
+  - -1286.2309250757098
+  - -1340.4609832104295
+  - -1262.7744099887088
+  probing_r2: 0.0689582357755067
+  trial: 12
+- eval_mean_return: -1290.3418808509286
+  eval_std_across_seeds: 62.98903207890296
+  params:
+    encoder_lr: 0.003219579298813045
+    kl_weight: 1.150168094131186e-05
+    latent_dim: 16
+  per_seed_returns:
+  - -1227.0633161716164
+  - -1376.279364656657
+  - -1267.6829617245123
+  probing_r2: 0.10924992729220229
+  trial: 13
+- eval_mean_return: -1310.6311423358354
+  eval_std_across_seeds: 33.10306118420531
+  params:
+    encoder_lr: 0.0008196181103272521
+    kl_weight: 0.00015819156118732918
+    latent_dim: 16
+  per_seed_returns:
+  - -1271.3834261587356
+  - -1352.355488446355
+  - -1308.1545124024153
+  probing_r2: 0.06447050345164584
+  trial: 14
+- eval_mean_return: -1305.7429893006492
+  eval_std_across_seeds: 23.34063415411022
+  params:
+    encoder_lr: 0.00020898142970091302
+    kl_weight: 0.0023266686800485913
+    latent_dim: 4
+  per_seed_returns:
+  - -1335.0785324050812
+  - -1304.1804547607899
+  - -1277.9699807360769
+  probing_r2: 0.024881306098288297
+  trial: 15
+- eval_mean_return: -1297.0307536138919
+  eval_std_across_seeds: 60.42007385224207
+  params:
+    encoder_lr: 0.00033224085326068534
+    kl_weight: 3.860187868531351e-05
+    latent_dim: 16
+  per_seed_returns:
+  - -1218.6254892241443
+  - -1365.6500286057592
+  - -1306.8167430117726
+  probing_r2: 0.05835352280192054
+  trial: 16
+- eval_mean_return: -1299.3924282966802
+  eval_std_across_seeds: 37.687128239301686
+  params:
+    encoder_lr: 0.0009581228702576789
+    kl_weight: 0.0010134384514466552
+    latent_dim: 4
+  per_seed_returns:
+  - -1283.6960793275387
+  - -1351.3506687998772
+  - -1263.130536762625
+  probing_r2: 0.03896819564432837
+  trial: 17
+- eval_mean_return: -1310.0384546949217
+  eval_std_across_seeds: 66.89900361362227
+  params:
+    encoder_lr: 0.003446511659889727
+    kl_weight: 0.0001479127925857368
+    latent_dim: 16
+  per_seed_returns:
+  - -1215.4636261351407
+  - -1355.1085780806839
+  - -1359.5431598689406
+  probing_r2: 0.08364172734317081
+  trial: 18
+- eval_mean_return: -1329.2546541991333
+  eval_std_across_seeds: 30.461353054065384
+  params:
+    encoder_lr: 0.0010676916501410137
+    kl_weight: 0.023027464440307573
+    latent_dim: 8
+  per_seed_returns:
+  - -1300.3971493246033
+  - -1371.3831242186948
+  - -1315.9836890541017
+  probing_r2: 0.038593288163524475
+  trial: 19
+- eval_mean_return: -1294.333954883491
+  eval_std_across_seeds: 31.022105699553155
+  params:
+    encoder_lr: 0.00036306296540862033
+    kl_weight: 2.3913408043995063e-05
+    latent_dim: 16
+  per_seed_returns:
+  - -1251.1123678307981
+  - -1309.4272816829384
+  - -1322.4622151367366
+  probing_r2: 0.061416267317600415
+  trial: 20
+- eval_mean_return: -1321.1244811305776
+  eval_std_across_seeds: 31.295448341524555
+  params:
+    encoder_lr: 0.002724737876999973
+    kl_weight: 0.0004490781425103513
+    latent_dim: 4
+  per_seed_returns:
+  - -1280.0428003178909
+  - -1355.924678343907
+  - -1327.405964729935
+  probing_r2: 0.03238269113960113
+  trial: 21
+- eval_mean_return: -1317.1629512726638
+  eval_std_across_seeds: 20.26815357455932
+  params:
+    encoder_lr: 0.002349741470512087
+    kl_weight: 0.00025619548700392235
+    latent_dim: 4
+  per_seed_returns:
+  - -1312.976036348194
+  - -1343.8134725159034
+  - -1294.6993449538945
+  probing_r2: 0.03808966288628
+  trial: 22
+- eval_mean_return: -1343.2714365013564
+  eval_std_across_seeds: 73.8296223361828
+  params:
+    encoder_lr: 0.0049382841812449976
+    kl_weight: 0.0013319751466656048
+    latent_dim: 4
+  per_seed_returns:
+  - -1391.0353706546127
+  - -1399.795779171586
+  - -1238.9831596778706
+  probing_r2: 0.028984487583496105
+  trial: 23
+- eval_mean_return: -1241.3340099367235
+  eval_std_across_seeds: 18.193251342489898
+  params:
+    encoder_lr: 0.0018158532922746594
+    kl_weight: 9.745091111746733e-05
+    latent_dim: 4
+  per_seed_returns:
+  - -1232.6886545427144
+  - -1266.6432300883578
+  - -1224.6701451790984
+  probing_r2: 0.025454030532613154
+  trial: 24
+- eval_mean_return: -1281.544439230999
+  eval_std_across_seeds: 52.71410326319026
+  params:
+    encoder_lr: 0.0014425540650734175
+    kl_weight: 7.460980135818493e-05
+    latent_dim: 4
+  per_seed_returns:
+  - -1229.3470164207743
+  - -1353.7380181729793
+  - -1261.5482830992435
+  probing_r2: 0.03245926983463535
+  trial: 25
+- eval_mean_return: -1324.313182248734
+  eval_std_across_seeds: 64.65614417402129
+  params:
+    encoder_lr: 0.0011116277651671011
+    kl_weight: 2.5377347046926517e-05
+    latent_dim: 4
+  per_seed_returns:
+  - -1376.585007660836
+  - -1363.1493225365878
+  - -1233.205216548778
+  probing_r2: 0.022248067106080044
+  trial: 26
+- eval_mean_return: -1287.3814189563118
+  eval_std_across_seeds: 57.67901509680584
+  params:
+    encoder_lr: 0.004496448242471313
+    kl_weight: 9.361993330679776e-05
+    latent_dim: 4
+  per_seed_returns:
+  - -1275.4780930284178
+  - -1363.218962452002
+  - -1223.4472013885156
+  probing_r2: 0.02844923073904816
+  trial: 27
+- eval_mean_return: -1310.9049994812658
+  eval_std_across_seeds: 6.647226412776975
+  params:
+    encoder_lr: 0.0007373973340775864
+    kl_weight: 0.00017327814268057026
+    latent_dim: 8
+  per_seed_returns:
+  - -1313.0411812625825
+  - -1301.9087326325475
+  - -1317.7650845486671
+  probing_r2: 0.04160879221284087
+  trial: 28
+- eval_mean_return: -1271.8938717606168
+  eval_std_across_seeds: 37.0367047050129
+  params:
+    encoder_lr: 0.0018140837457893864
+    kl_weight: 4.73318678085168e-05
+    latent_dim: 16
+  per_seed_returns:
+  - -1222.3537996076047
+  - -1281.9359690330923
+  - -1311.391846641153
+  probing_r2: 0.07983156696541473
+  trial: 29
