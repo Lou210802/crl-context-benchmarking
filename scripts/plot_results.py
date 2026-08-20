@@ -105,7 +105,7 @@ def generate_all_plots(results_dir: str) -> None:
 
     plotter = Plotter()
     for metric in available_metrics:
-        metric_title = f"PPO {metric.replace('_', ' ').title()} Comparison"
+        metric_title = f"{metric.replace('_', ' ').title()} Comparison"
         output_filename = f"{metric}_comparison.png"
         output_path = os.path.join(results_dir, output_filename)
 

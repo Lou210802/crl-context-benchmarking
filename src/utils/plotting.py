@@ -15,10 +15,10 @@ class Plotter:
 
     def __init__(
         self,
-        title_fontsize: int = 16,
-        axis_fontsize: int = 14,
-        tick_fontsize: int = 12,
-        legend_fontsize: int = 12,
+        title_fontsize: int = 13,
+        axis_fontsize: int = 11,
+        tick_fontsize: int = 10,
+        legend_fontsize: int = 10,
         reps: int = 2000,
         confidence_interval_size: float = 0.95,
     ):
@@ -28,7 +28,7 @@ class Plotter:
         self.legend_fontsize = legend_fontsize
         self.reps = reps
         self.confidence_interval_size = confidence_interval_size
-        sns.set_style("whitegrid")
+        sns.set_theme(style="whitegrid", palette="muted")
 
     def plot_learning_curves(
         self,
@@ -61,13 +61,14 @@ class Plotter:
                 base = os.path.basename(filepath)
                 mode = base.replace("_results.csv", "").replace(".csv", "")
 
-            if mode not in algo_runs:
-                algo_runs[mode] = []
+            mode_name = mode.upper()
+            if mode_name not in algo_runs:
+                algo_runs[mode_name] = []
 
             val_col = metric_col if metric_col in df.columns else df.columns[1]
             s_col = step_col if step_col in df.columns else df.columns[0]
 
-            algo_runs[mode].append(df[val_col].values)
+            algo_runs[mode_name].append(df[val_col].values)
             if frames is None:
                 frames = df[s_col].values
 
@@ -84,24 +85,27 @@ class Plotter:
             confidence_interval_size=self.confidence_interval_size,
         )
 
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(8, 5), dpi=300)
         plot_utils.plot_sample_efficiency_curve(
             frames,
             point_estimates,
             interval_estimates,
             algorithms=list(score_dict.keys()),
             ax=ax,
+            marker="",
+            linewidth=2.2,
         )
 
-        ax.set_title(title, fontsize=self.title_fontsize)
-        ax.set_xlabel("Step", fontsize=self.axis_fontsize)
-        ax.set_ylabel("Mean Return (IQM)", fontsize=self.axis_fontsize)
+        ax.set_title(title, fontsize=self.title_fontsize, fontweight="bold", pad=12)
+        ax.set_xlabel("Environment Step", fontsize=self.axis_fontsize, fontweight="bold")
+        ax.set_ylabel("Mean Return (IQM)", fontsize=self.axis_fontsize, fontweight="bold")
         ax.tick_params(axis="both", labelsize=self.tick_fontsize)
         if ax.get_legend() is None:
-            ax.legend(fontsize=self.legend_fontsize, loc="best")
+            ax.legend(fontsize=self.legend_fontsize, loc="best", frameon=True)
         else:
             plt.setp(ax.get_legend().get_texts(), fontsize=self.legend_fontsize)
 
+        sns.despine(ax=ax, top=True, right=True)
         plt.tight_layout()
         if output_path:
             os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
@@ -301,7 +305,7 @@ class Plotter:
         if isinstance(filepaths, dict):
             for label, paths in filepaths.items():
                 dfs = [pd.read_csv(p) for p in paths]
-                grouped_dfs[label] = dfs
+                grouped_dfs[label.upper()] = dfs
         else:
             for path in filepaths:
                 df = pd.read_csv(path)
@@ -313,12 +317,13 @@ class Plotter:
                 if labels and mode in labels:
                     mode = labels[mode]
 
-                if mode not in grouped_dfs:
-                    grouped_dfs[mode] = []
-                grouped_dfs[mode].append(df)
+                mode_key = mode.upper()
+                if mode_key not in grouped_dfs:
+                    grouped_dfs[mode_key] = []
+                grouped_dfs[mode_key].append(df)
 
         if labels and isinstance(filepaths, dict):
-            grouped_dfs = {labels.get(k, k): v for k, v in grouped_dfs.items()}
+            grouped_dfs = {labels.get(k, k).upper(): v for k, v in grouped_dfs.items()}
 
         can_rliable = use_rliable
         if can_rliable:
@@ -326,6 +331,8 @@ class Plotter:
                 if len(dfs) == 0:
                     can_rliable = False
                     break
+
+        fig, ax = plt.subplots(figsize=(8, 5), dpi=300)
 
         if can_rliable:
             algo_runs: Dict[str, List[np.ndarray]] = {}
@@ -352,44 +359,45 @@ class Plotter:
                 confidence_interval_size=self.confidence_interval_size,
             )
 
-            fig, ax = plt.subplots(figsize=(10, 6))
             plot_utils.plot_sample_efficiency_curve(
                 frames,
                 point_estimates,
                 interval_estimates,
                 algorithms=list(score_dict.keys()),
                 ax=ax,
+                marker="",
+                linewidth=2.2,
             )
         else:
-            fig, ax = plt.subplots(figsize=(10, 6))
             combined_records = []
             for label, dfs in grouped_dfs.items():
                 for df in dfs:
                     val_c = metric_col if metric_col in df.columns else df.columns[1]
                     s_c = step_col if step_col in df.columns else df.columns[0]
                     for s, v in zip(df[s_c], df[val_c]):
-                        combined_records.append({"Group": label, "Step": s, "Value": v})
+                        combined_records.append({"Algorithm": label, "Step": s, "Value": v})
 
             combined_df = pd.DataFrame(combined_records)
             sns.lineplot(
                 data=combined_df,
                 x="Step",
                 y="Value",
-                hue="Group",
+                hue="Algorithm",
                 ax=ax,
                 errorbar="sd",
             )
 
-        ax.set_title(title, fontsize=self.title_fontsize)
-        ax.set_xlabel("Step", fontsize=self.axis_fontsize)
+        ax.set_title(title, fontsize=self.title_fontsize, fontweight="bold", pad=12)
+        ax.set_xlabel("Environment Step", fontsize=self.axis_fontsize, fontweight="bold")
         y_label = metric_col.replace("_", " ").title() if metric_col else "Value"
-        ax.set_ylabel(y_label, fontsize=self.axis_fontsize)
+        ax.set_ylabel(y_label, fontsize=self.axis_fontsize, fontweight="bold")
         ax.tick_params(axis="both", labelsize=self.tick_fontsize)
         if ax.get_legend() is None:
-            ax.legend(fontsize=self.legend_fontsize, loc="best")
+            ax.legend(fontsize=self.legend_fontsize, loc="best", frameon=True)
         else:
             plt.setp(ax.get_legend().get_texts(), fontsize=self.legend_fontsize)
 
+        sns.despine(ax=ax, top=True, right=True)
         plt.tight_layout()
         if output_path:
             os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)

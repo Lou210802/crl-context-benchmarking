@@ -141,6 +141,66 @@ def visualize_latent_space_pca(
     return output_path
 
 
+def visualize_latent_space_tsne(
+    latent_vectors: np.ndarray,
+    color_values: np.ndarray,
+    color_label: str = "Gravity",
+    title: str = "Latent Context Representation t-SNE",
+    output_path: str = "latent_space_tsne.png",
+    perplexity: float = 30.0,
+    random_state: int = 42,
+) -> str:
+    """
+    Projects latent context vectors z_t down to 2D using non-linear t-SNE and generates a scatter plot
+    colored by ground-truth physical context values.
+    """
+    from sklearn.manifold import TSNE
+    output_path = os.path.abspath(output_path)
+
+    # Subsample if large for crisp visualization and fast rendering
+    n_samples = len(latent_vectors)
+    if n_samples > 2000:
+        rng = np.random.RandomState(random_state)
+        indices = rng.choice(n_samples, size=2000, replace=False)
+        z_sub = latent_vectors[indices]
+        c_sub = color_values[indices]
+    else:
+        z_sub = latent_vectors
+        c_sub = color_values
+
+    perp = min(perplexity, max(5.0, len(z_sub) / 5.0))
+    tsne = TSNE(n_components=2, perplexity=perp, random_state=random_state, init="pca", learning_rate="auto")
+    z_tsne = tsne.fit_transform(z_sub)
+
+    sns.set_theme(style="whitegrid", palette="muted")
+    fig, ax = plt.subplots(figsize=(8, 6), dpi=300)
+
+    scatter = ax.scatter(
+        z_tsne[:, 0],
+        z_tsne[:, 1],
+        c=c_sub,
+        cmap="viridis",
+        alpha=0.85,
+        edgecolor="k",
+        linewidth=0.5,
+        s=45,
+    )
+    cbar = fig.colorbar(scatter, ax=ax)
+    cbar.set_label(color_label, fontsize=11, fontweight="bold")
+
+    ax.set_title(title, fontsize=13, fontweight="bold", pad=12)
+    ax.set_xlabel("t-SNE Dimension 1", fontsize=11, fontweight="bold")
+    ax.set_ylabel("t-SNE Dimension 2", fontsize=11, fontweight="bold")
+
+    sns.despine(ax=ax, top=True, right=True)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300)
+    plt.close(fig)
+
+    print(f"  [SUCCESS] Latent t-SNE Visualization saved to '{output_path}'")
+    return output_path
+
+
 def visualize_probing_scatter(
     true_contexts: np.ndarray,
     pred_contexts: np.ndarray,
